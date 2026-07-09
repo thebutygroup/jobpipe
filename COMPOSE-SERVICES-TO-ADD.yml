@@ -1,0 +1,52 @@
+# ============================================================================
+# jobpipe services — PASTE THESE into the `services:` block of
+# C:\stack\docker-compose.yml (alongside web, bot, poller, cloudflared).
+# No `ports:` — cloudflared reaches the dashboard as http://jobpipe-web:8010
+# on the internal Docker network, exactly like web:8000 and bot:5000.
+# ============================================================================
+
+  jobpipe-web:
+    build: ./jobpipe
+    image: jobpipe:latest
+    command: >
+      gunicorn jobpipe.dashboard.wsgi:application
+      --bind 0.0.0.0:8010 --workers 2 --timeout 60 --access-logfile -
+    env_file: ./jobpipe/app/.env
+    volumes:
+      - ./jobpipe/app/data:/app/data
+      - ./jobpipe/app/assets:/app/assets:ro
+      - ./jobpipe/app/profile.yaml:/app/profile.yaml:ro
+      - ./jobpipe/app/companies.yaml:/app/companies.yaml:ro
+      - ./jobpipe/app/searches.yaml:/app/searches.yaml:ro
+      - ./jobpipe/app/constituents_static.yaml:/app/constituents_static.yaml:ro
+    restart: unless-stopped
+
+  jobpipe-scheduler:
+    image: jobpipe:latest          # reuses the jobpipe-web build
+    command: python -m jobpipe.scheduler
+    env_file: ./jobpipe/app/.env
+    volumes:
+      - ./jobpipe/app/data:/app/data
+      - ./jobpipe/app/assets:/app/assets:ro
+      - ./jobpipe/app/profile.yaml:/app/profile.yaml:ro
+      - ./jobpipe/app/companies.yaml:/app/companies.yaml:ro
+      - ./jobpipe/app/searches.yaml:/app/searches.yaml:ro
+      - ./jobpipe/app/constituents_static.yaml:/app/constituents_static.yaml:ro
+    depends_on:
+      - jobpipe-web
+    restart: unless-stopped
+
+  # Submitter: dedicated Playwright image. Submits NOTHING unless SUBMIT_ENABLED=true
+  # in ./jobpipe/app/.env — enforced in code. Only ./data is mounted (isolation).
+  jobpipe-submitter:
+    image: mcr.microsoft.com/playwright/python:v1.44.0-jammy
+    mem_limit: 2g
+    working_dir: /app
+    command: bash -c "pip install --no-cache-dir -e . && python -m jobpipe.submit"
+    env_file: ./jobpipe/app/.env
+    volumes:
+      - ./jobpipe/app:/app
+      - ./jobpipe/app/data:/app/data
+    depends_on:
+      - jobpipe-web
+    restart: unless-stopped

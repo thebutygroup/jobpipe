@@ -1,0 +1,22 @@
+from django.urls import path
+
+from . import views
+
+urlpatterns = [
+    path("", views.today, name="today"),
+    path("all", views.all_postings, name="all"),
+    path("app/<int:app_id>", views.app_detail, name="app_detail"),
+    path("stats", views.stats, name="stats"),
+    path("applicants", views.applicants_index, name="applicants"),
+    path("onboard", views.onboard, name="onboard"),
+    path("outcome/<int:outcome_id>/link", views.outcome_link, name="outcome_link"),
+    path("job_matches/<str:user_ref>", views.user_matches, name="user_matches"),
+    path("job_matches/<str:user_ref>/<int:job_id>", views.job_match_detail,
+         name="job_match_detail"),
+    path("app/<int:app_id>/save", views.app_save, name="app_save"),
+    path("app/<int:app_id>/approve", views.app_approve, name="app_approve"),
+    path("app/<int:app_id>/reject", views.app_reject, name="app_reject"),
+    path("app/<int:app_id>/resume", views.app_resume, name="app_resume"),
+    path("app/<int:app_id>/applied", views.app_applied, name="app_applied"),
+    path("healthz", views.healthz, name="healthz"),
+]

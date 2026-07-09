@@ -1,0 +1,29 @@
+[project]
+name = "jobpipe"
+version = "0.2.0"
+description = "Self-hosted job discovery + matching pipeline (v0: read-only)"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31",
+    "beautifulsoup4>=4.12",
+    "pydantic>=2.5",
+    "pydantic-settings>=2.1",
+    "PyYAML>=6.0",
+    "anthropic>=0.40",
+    "APScheduler>=3.10",
+    "gunicorn>=22.0",
+    "Django>=5.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.4"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["jobpipe*"]
+
+[tool.ruff]
+line-length = 100

@@ -1,0 +1,66 @@
+# Static FALLBACK constituent lists — used only when the weekly Wikipedia refresh
+# fails or its table markup drifts. Deliberately partial (well-known large caps);
+# Wikipedia is the primary, complete, self-updating source. Extend freely.
+indexes:
+  ftse100:
+    - AstraZeneca
+    - Shell plc
+    - HSBC Holdings
+    - Unilever
+    - BP
+    - GSK
+    - Diageo
+    - Rio Tinto
+    - Barclays
+    - Lloyds Banking Group
+    - NatWest Group
+    - Vodafone Group
+    - Tesco
+    - Prudential plc
+    - National Grid plc
+    - Rolls-Royce Holdings
+    - BAE Systems
+    - RELX
+    - London Stock Exchange Group
+    - Experian
+    - Sage Group
+    - Ocado Group
+    - J Sainsbury
+    - Standard Chartered
+    - Legal & General
+    - Aviva
+    - BT Group
+    - Compass Group
+    - InterContinental Hotels Group
+    - Burberry
+  sp500:
+    - Apple Inc.
+    - Microsoft
+    - Nvidia
+    - Amazon
+    - Alphabet Inc.
+    - Meta Platforms
+    - Berkshire Hathaway
+    - Eli Lilly and Company
+    - JPMorgan Chase
+    - Visa Inc.
+    - Mastercard
+    - Johnson & Johnson
+    - UnitedHealth Group
+    - Procter & Gamble
+    - Costco
+    - Netflix
+    - Adobe Inc.
+    - Salesforce
+    - Oracle Corporation
+    - Intel
+    - Cisco
+    - PepsiCo
+    - The Coca-Cola Company
+    - Walmart
+    - The Home Depot
+    - McDonald's
+    - Nike, Inc.
+    - Goldman Sachs
+    - Morgan Stanley
+    - American Express

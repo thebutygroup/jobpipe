@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Applicants</h1>
+{% for ap in applicants %}
+<div class="card">
+  <h2>{{ ap.name }}{% if not ap.active %} <span class="meta">(inactive)</span>{% endif %}</h2>
+  <p class="meta">
+    {{ ap.n_matches }} matches · {{ ap.n_review }} in review ·
+    {{ ap.n_applied }} applied · {{ ap.n_interviews }} interviews
+  </p>
+  <p class="meta">
+    {% if ap.user_ref %}<a href="/job_matches/{{ ap.user_ref }}">matches page ↗</a> · {% endif %}
+    <a href="/stats?applicant={{ ap.id }}">stats</a>
+  </p>
+</div>
+{% empty %}
+<p class="meta">No applicants yet.</p>
+{% endfor %}
+{% endblock %}

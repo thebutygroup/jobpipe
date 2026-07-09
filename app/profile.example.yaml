@@ -1,0 +1,70 @@
+# Copy to profile.yaml (git-ignored) and fill in. v0 uses identity, preferences,
+# and positioning_summary; the remaining keys become active in v1.
+identity:
+  full_name: "Your Name"
+  email: "you@example.com"
+  location: "London, UK"
+  links:
+    linkedin: "https://linkedin.com/in/..."
+    github: "https://github.com/thebutygroup"
+    portfolio: "https://joebuty.pythonanywhere.com"
+
+preferences:
+  target_titles:
+    - "Forward Deployed Engineer"
+    - "Founding Engineer"
+    - "Applied AI Engineer"
+    - "Senior Data Engineer"
+    - "Machine Learning Engineer"
+    - "Data Engineering Manager"
+  title_synonyms:
+    - "FDE"
+    - "Solutions Engineer, AI"
+    - "Member of Technical Staff"
+  locations_ok:
+    - "London"
+    - "Remote (UK)"
+    - "Hybrid"
+    - "United Kingdom"
+  hard_nos:
+    - "fully onsite outside London"
+    - "requires relocation"
+
+positioning_summary: >
+  Senior data/ML engineer. Thesis: the bottleneck in AI has moved from capability
+  to integration — strongest fit is roles that put models into production systems
+  (forward-deployed, founding, applied-AI). Owns a large-scale LLM issue-classification
+  system processing tens of thousands of conversations daily.
+
+# ---- v1 keys (accepted, unused in v0) ----
+eligibility: {}
+documents: {}
+answers_bank: []
+
+# ================= v1 sections (used once you build/enable v1) =================
+# eligibility drives ALL compliance answers. These are NEVER LLM-generated.
+eligibility_v1_example:                 # rename to 'eligibility:' to activate
+  work_authorisation: "UK citizen — full right to work, no restrictions"
+  requires_sponsorship: false           # single source of truth for every visa question
+  notice_period: "1 month"
+  salary:
+    currency: GBP
+    min: 85000
+    preferred: 95000
+    disclose: range_only                # range_only | exact | decline
+
+documents_v1_example:                    # rename to 'documents:' to activate
+  resume_default: "assets/resume_senior_de.pdf"
+  resume_variants:
+    fde: "assets/resume_fde.pdf"
+  cover_letter_corpus:                   # style references for the drafter
+    - "assets/cover_letters/poolside.md"
+    - "assets/cover_letters/iris_os.md"
+
+answers_bank_v1_example:                 # rename to 'answers_bank:' to activate
+  - match: ["how did you hear"]
+    answer: "Company careers page"
+  - match: ["sponsorship", "visa", "right to work"]
+    answer_from: "eligibility.requires_sponsorship"   # structured, never typed free
+  - match: ["why do you want", "why are you interested"]
+    strategy: llm_generate

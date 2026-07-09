@@ -1,0 +1,7 @@
+# Built In saved searches to poll. Build a search on builtinlondon.uk (or any
+# Built In city site), copy the URL, name it here.
+searches:
+  - name: data-engineer-london
+    url: https://builtinlondon.uk/jobs?search=data+engineer
+  - name: fde-london
+    url: https://builtinlondon.uk/jobs?search=forward+deployed+engineer

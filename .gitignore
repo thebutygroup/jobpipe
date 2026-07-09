@@ -1,0 +1,19 @@
+# ---- secrets & personal data: NEVER commit ----
+app/.env
+app/profile.yaml
+app/dream.yaml
+app/data/
+**/builtin_cookies.json
+
+# ---- operational configs & deploy diaries (personal; ship .example instead) ----
+app/companies.yaml
+app/searches.yaml
+app/FIXES-*.md
+app/assets/
+
+# ---- runtime junk ----
+**/__pycache__/
+**/.pytest_cache/
+*.egg-info/
+*.pyc
+.DS_Store

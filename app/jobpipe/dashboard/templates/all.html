@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<form class="filter" method="get">
+  state <input name="state" value="{{ state }}" placeholder="MATCHED">
+  min score <input name="min_score" value="{{ min_score }}" size="3">
+  <button>filter</button>
+</form>
+{% if rows %}
+<table>
+<tr><th>when</th><th>company</th><th>title</th><th>location</th><th>score</th><th>state</th><th></th></tr>
+<form method="get" class="meta" style="margin:10px 0">
+  <input name="q" value="{{ q }}" placeholder="filter title, e.g. data engineer"
+         style="background:#1c2128;border:1px solid #333;color:#e6e6e6;padding:5px 8px;border-radius:4px;width:220px">
+  <input type="hidden" name="sort" value="{{ sort }}">
+  <button type="submit">filter</button>
+  {% if q %}<a href="?sort={{ sort }}">clear</a>{% endif %}
+  · sort:
+  <a href="?q={{ q|urlencode }}&sort=score"{% if sort == "score" %} style="font-weight:700"{% endif %}>score</a>
+  <a href="?q={{ q|urlencode }}&sort=title"{% if sort == "title" %} style="font-weight:700"{% endif %}>title</a>
+  <a href="?q={{ q|urlencode }}&sort=company"{% if sort == "company" %} style="font-weight:700"{% endif %}>company</a>
+  <a href="?q={{ q|urlencode }}&sort=newest"{% if sort == "newest" %} style="font-weight:700"{% endif %}>newest</a>
+</form>
+{% for r in rows %}
+<tr><td>{{ r.created_at }}</td><td><a href="https://www.google.com/search?q={{ r.company|urlencode }}" target="_blank" rel="noopener" title="Google this company">{{ r.company }}</a></td><td>{{ r.title }}</td>
+<td>{{ r.location }}</td><td>{{ r.score }}</td><td>{{ r.state }}</td>
+<td><a href="/app/{{ r.id }}">review</a> · <a href="{{ r.apply_url }}" target="_blank" rel="noopener">↗</a></td></tr>
+{% endfor %}
+</table>
+{% else %}<div class="empty">Nothing yet.</div>{% endif %}
+{% endblock %}

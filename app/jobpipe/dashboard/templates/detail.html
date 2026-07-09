@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="top"><h2><a href="https://www.google.com/search?q={{ app.company|urlencode }}" target="_blank" rel="noopener" title="Google this company">{{ app.company }}</a> — {{ app.title }}</h2>
+    <span class="score">{{ app.score }}/10</span></div>
+  <div class="meta">{{ app.location }} · state {{ app.state }} ·
+    <a class="apply" href="{{ app.apply_url }}" target="_blank" rel="noopener">apply page ↗</a></div>
+  {% if links.listing %}
+  <div class="meta" style="margin-top:8px">
+    <a href="{{ links.listing }}" target="_blank" rel="noopener">
+      {% if links.listing_is_board %}job listing (Built In) ↗{% else %}job listing (company site) ↗{% endif %}</a>
+    {% if links.company_page %} · <a href="{{ links.company_page }}" target="_blank" rel="noopener">company page ↗</a>{% endif %}
+    {% if links.listing_is_board and links.board_listing != links.listing %} · <a href="{{ links.board_listing }}" target="_blank" rel="noopener">Built In listing ↗</a>{% endif %}
+  </div>
+  {% endif %}
+  {% if not public_view and timeline %}
+  <div class="card">
+    <h2>Progress</h2>
+    <ul style="list-style:none;padding:0;margin:0">
+    {% for item in timeline %}
+      <li class="meta" style="padding:3px 0">
+        {{ item.at|slice:":16" }} ·
+        {% if item.kind == "outcome" %}<strong class="good">{{ item.label }}</strong>
+          {% if item.detail %}· {{ item.detail }}{% endif %}
+        {% else %}{{ item.label }}{% endif %}
+      </li>
+    {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% if public_view and salary_signal %}<p class="meta good">✓ {{ salary_signal }}</p>{% endif %}
+  {% if highlights %}<ul>{% for h in highlights %}<li class="good">✓ {{ h }}</li>{% endfor %}</ul>{% endif %}
+  {% if alignment %}
+  <table style="width:100%;border-collapse:collapse;margin-top:10px;font-size:13px">
+    <tr>
+      <th style="text-align:left;color:var(--dim);font-size:11px;padding:4px 8px;border-bottom:1px solid var(--line)">You want / have</th>
+      <th style="text-align:left;color:var(--dim);font-size:11px;padding:4px 8px;border-bottom:1px solid var(--line)">The job offers / needs</th>
+    </tr>
+    {% for pair in alignment %}
+    <tr>
+      <td style="padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:top">{{ pair.you }}</td>
+      <td style="padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:top">{{ pair.job }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="font-size:14px;margin-bottom:8px">Job description (captured)</h2>
+  <div style="font-size:13px;color:var(--dim);white-space:pre-wrap;max-height:260px;overflow:auto">{{ app.description_text }}</div>
+</div>
+
+{% if public_view and redacted_n %}
+<div class="card" style="border-left:3px solid var(--hum)">
+  <div class="meta">{{ redacted_n }} sensitive field(s) (salary / immigration status) are hidden on this shared page.</div>
+</div>
+{% endif %}
+{% if public_view %}
+<div class="card">
+  <h2 style="font-size:14px;margin-bottom:10px">Application answers</h2>
+  {% for f in fields %}
+    <div style="margin-bottom:12px">
+      <div style="font-size:12px;color:var(--dim)">{{ f.label }}</div>
+      <div style="font-size:14px">{{ f.value|default:"—" }}</div>
+    </div>
+  {% endfor %}
+  {% if app.cover_letter_text %}
+    <div style="font-size:12px;color:var(--dim);margin-top:10px">Cover letter</div>
+    <div style="font-size:13px;white-space:pre-wrap">{{ app.cover_letter_text }}</div>
+  {% endif %}
+</div>
+{% endif %}
+{% if not public_view %}<form method="post" action="/app/{{ app.id }}/save">{% csrf_token %}
+<div class="card">
+  <h2 style="font-size:14px;margin-bottom:10px">Application answers</h2>
+  {% for f in fields %}
+    <div style="margin-bottom:14px">
+      <div style="font-size:13px;color:var(--dim)">{{ f.label }}
+        {% if f.required %}<span class="flag">*</span>{% endif %}
+        · <span style="font-size:11px">{{ f.source }}</span>
+        {% if f.llm %}<span style="font-size:11px;color:var(--hum)">LLM draft — check me</span>{% endif %}
+        {% if f.unknown %}<span style="font-size:11px;color:var(--bad)">MISSING — fill in</span>{% endif %}
+      </div>
+      {% if f.kind == "textarea" %}
+        <textarea name="answer__{{ f.key }}" rows="5" style="width:100%;background:var(--bg);color:var(--text);border:1px solid {% if f.unknown %}var(--bad){% elif f.llm %}var(--hum){% else %}var(--line){% endif %};border-radius:4px;padding:6px">{{ f.value }}</textarea>
+      {% elif f.kind == "select" %}
+        <select name="answer__{{ f.key }}" style="background:var(--bg);color:var(--text);border:1px solid {% if f.unknown %}var(--bad){% else %}var(--line){% endif %};border-radius:4px;padding:4px">
+          <option value="">—</option>
+          {% for opt in f.options %}<option {% if opt == f.value %}selected{% endif %}>{{ opt }}</option>{% endfor %}
+        </select>
+      {% elif f.kind == "file" %}
+        <div style="font-size:13px">📎 {{ f.value|default:"(no resume set)" }}</div>
+      {% else %}
+        <input name="answer__{{ f.key }}" value="{{ f.value }}" style="width:100%;background:var(--bg);color:var(--text);border:1px solid {% if f.unknown %}var(--bad){% else %}var(--line){% endif %};border-radius:4px;padding:6px">
+      {% endif %}
+    </div>
+  {% endfor %}
+  {% if app.cover_letter_text %}
+    <div style="font-size:13px;color:var(--dim)">Cover letter <span style="font-size:11px;color:var(--hum)">LLM draft — check me</span></div>
+    <textarea name="cover_letter" rows="8" style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--hum);border-radius:4px;padding:6px">{{ app.cover_letter_text }}</textarea>
+  {% endif %}
+  <button style="margin-top:10px">Save edits</button>
+</div>
+</form>
+
+<div class="card">
+  {% if can_approve %}
+    <form method="post" action="/app/{{ app.id }}/approve" style="display:inline">{% csrf_token %}
+      <button style="background:var(--det);color:#000;border:0;border-radius:5px;padding:9px 18px;font-weight:700">Looks good — submit this application</button>
+    </form>
+  {% elif gaps %}
+    <div class="flag" style="font-size:13px">Fill the {{ gaps|length }} missing required field(s) and save before approving.</div>
+  {% else %}
+    <div class="meta">Not approvable in state {{ app.state }}.</div>
+  {% endif %}
+  {% if app.state == "PENDING_REVIEW" %}
+  {% if app.state in "MATCHED PREPARED PENDING_REVIEW NEEDS_HUMAN" %}
+  <form method="post" action="/app/{{ app.id }}/applied" style="display:inline;margin-left:10px">{% csrf_token %}
+    <button type="submit" title="You applied to this yourself, outside the pipeline">I applied manually</button>
+  </form>
+  {% endif %}
+  <form method="post" action="/app/{{ app.id }}/reject" style="display:inline;margin-left:10px">{% csrf_token %}
+    <button style="background:transparent;color:var(--bad);border:1px solid var(--bad);border-radius:5px;padding:8px 14px">Reject</button>
+  </form>
+  {% endif %}
+  {% if app.state == "NEEDS_HUMAN" %}
+  <form method="post" action="/app/{{ app.id }}/resume" style="display:inline;margin-left:10px">{% csrf_token %}
+    <button style="background:transparent;color:var(--hum);border:1px solid var(--hum);border-radius:5px;padding:8px 14px">Fixed it — resume submission</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+{% if public_view %}
+<div class="card"><div class="meta">This is a shared read-only view. To edit or submit, open the private review dashboard.</div></div>
+{% endif %}
+{% endblock %}

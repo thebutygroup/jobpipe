@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Analytics{% if applicant_name %} — {{ applicant_name }}{% endif %}</h1>
+{% if applicant_id %}<p class="meta"><a href="/stats">← all applicants</a></p>{% endif %}
+
+<div class="card">
+  <h2>Funnel</h2>
+  <p class="meta">
+    {{ funnel.applied }} applied · {{ funnel.interviews }} interviews
+    ({{ funnel.interview_rate }}%) · {{ funnel.offers }} offers ·
+    {{ funnel.rejected }} rejected · {{ funnel.no_response }} awaiting response
+  </p>
+</div>
+
+<div class="card">
+  <h2>Outcomes by match score</h2>
+  {% if score_bands %}
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <tr><th style="text-align:left;color:var(--dim);padding:4px 8px">Score</th>
+        <th style="text-align:left;color:var(--dim);padding:4px 8px">Applied</th>
+        <th style="text-align:left;color:var(--dim);padding:4px 8px">Interviews</th>
+        <th style="text-align:left;color:var(--dim);padding:4px 8px">Rejected</th></tr>
+    {% for b in score_bands %}
+    <tr><td style="padding:4px 8px">{{ b.score }}/10</td>
+        <td style="padding:4px 8px">{{ b.applied }}</td>
+        <td style="padding:4px 8px">{{ b.interviews }}</td>
+        <td style="padding:4px 8px">{{ b.rejected }}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="meta">No applications submitted yet.</p>{% endif %}
+</div>
+
+<div class="card">
+  <h2>Role focus</h2>
+  {% if roles %}
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <tr><th style="text-align:left;color:var(--dim);padding:4px 8px">Role type</th>
+        <th style="text-align:left;color:var(--dim);padding:4px 8px">Applied</th>
+        <th style="text-align:left;color:var(--dim);padding:4px 8px">Interviews</th>
+        <th style="text-align:left;color:var(--dim);padding:4px 8px">Salary bands seen</th></tr>
+    {% for r in roles %}
+    <tr><td style="padding:4px 8px">{{ r.role }}</td>
+        <td style="padding:4px 8px">{{ r.applied }}</td>
+        <td style="padding:4px 8px">{{ r.interviews }}</td>
+        <td style="padding:4px 8px">{{ r.salary_bands }}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="meta">No applications submitted yet.</p>{% endif %}
+</div>
+
+{% if unlinked %}
+<div class="card">
+  <h2>Unlinked outcome emails</h2>
+  <p class="meta">Forwarded emails I couldn't match to one application — link via DB for now.</p>
+  <ul>{% for o in unlinked %}
+    <li class="meta" style="padding:3px 0">{{ o.occurred_at|slice:":10" }} · {{ o.outcome_type }} ·
+        {{ o.email_subject }}{% if o.company_guess %} (guess: {{ o.company_guess }}){% endif %}
+        <form method="post" action="/outcome/{{ o.id }}/link" style="display:inline">{% csrf_token %}
+          <input name="application_id" placeholder="app id" style="width:70px">
+          <button type="submit">link</button>
+        </form></li>
+  {% endfor %}</ul>
+</div>
+{% endif %}
+{% endblock %}

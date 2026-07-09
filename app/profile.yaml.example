@@ -1,0 +1,20 @@
+# Primary applicant profile (applicant #1). Onboarded users store theirs in
+# the DB via /onboard; this file is the file-based bootstrap profile.
+identity:
+  full_name: Your Name
+  email: you@example.com
+  location: London
+
+preferences:
+  target_titles: [Forward Deployed Engineer, Data Engineer]
+  locations_ok: [London, Remote UK]
+  hard_nos: []
+
+positioning_summary: >
+  Four to six sentences on what you want, your strengths and goals.
+  This text drives the matching, so make it specific.
+
+eligibility:
+  salary: {currency: GBP, min: 70000}
+  # Application-stage fields (visa, sponsorship, notice) are optional at
+  # discovery scope; add them before enabling the submitter.

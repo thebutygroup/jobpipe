@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+{% if apps %}
+  {% for a in apps %}
+  <div class="card">
+    <div class="top"><h2><a href="https://www.google.com/search?q={{ a.company|urlencode }}" target="_blank" rel="noopener" title="Google this company">{{ a.company }}</a> — <a href="/app/{{ a.id }}" style="color:inherit;text-decoration:none">{{ a.title }}</a></h2>
+      <span class="score">{{ a.score }}/10</span></div>
+    <div class="meta">{{ a.location }} · state {{ a.state }}
+      {% if a.gaps %} · <span class="flag">{{ a.gaps }} field(s) need you</span>{% endif %}</div>
+    {% if a.reasons %}<ul>{% for r in a.reasons %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
+    {% if a.outcome %}<span class="good" style="font-size:12px">● {{ a.outcome }}</span>{% endif %}
+    {% if a.highlights %}<ul>{% for h in a.highlights %}<li class="good">✓ {{ h }}</li>{% endfor %}</ul>{% endif %}
+    <a class="apply" href="/app/{{ a.id }}">review &amp; approve →</a>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="empty">Nothing waiting for review.</div>
+{% endif %}
+{% endblock %}

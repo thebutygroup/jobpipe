@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>jobpipe</title>
+<style>
+:root{--bg:#12151a;--panel:#181d24;--line:#2a3340;--text:#d6dbe1;--dim:#8b95a3;
+--det:#3dd6c3;--hum:#f5b14c;--bad:#e0705f}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font:15px/1.55 system-ui,sans-serif;padding:20px}
+.wrap{max-width:820px;margin:0 auto}
+h1{font-size:20px;margin-bottom:4px}
+.sub{color:var(--dim);font-size:13px;margin-bottom:20px}
+a{color:var(--det)}
+a:visited{color:#8fd8cd}
+.meta a{color:var(--det)}
+nav a{color:var(--det);text-decoration:none;margin-right:14px;font-size:13px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+padding:14px 16px;margin-bottom:12px}
+.card .top{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.card h2{font-size:16px}
+.score{font-weight:700;color:var(--det);white-space:nowrap}
+.meta{color:var(--dim);font-size:13px;margin:2px 0 8px}
+ul{margin-left:18px;font-size:13.5px}
+.good{color:var(--ok,#6fcf76);font-size:13px}
+.flag{color:var(--hum)}
+.apply{display:inline-block;margin-top:8px;color:var(--det);font-size:13px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line)}
+th{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+.empty{color:var(--dim);padding:30px 0;text-align:center}
+form.filter{margin-bottom:14px;font-size:13px;color:var(--dim)}
+form.filter input,form.filter select{background:var(--panel);color:var(--text);
+border:1px solid var(--line);border-radius:4px;padding:3px 6px}
+</style>
+</head>
+<body><div class="wrap">
+<h1>jobpipe</h1>
+<div class="sub">read-only · v0</div>
+<nav><a href="/">today</a> <a href="/all">all</a> <a href="/applicants">applicants</a> <a href="/stats">stats</a></nav>
+{% block content %}{% endblock %}
+</div></body>
+</html>

@@ -1,0 +1,9 @@
+# ATS board registry. The weekly index scan and company resolver add to the
+# DB automatically; this file seeds boards you already know.
+companies:
+  - name: Anthropic
+    ats: greenhouse
+    board_token: anthropic
+  - name: ElevenLabs
+    ats: ashby
+    board_token: elevenlabs

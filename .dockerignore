@@ -1,0 +1,11 @@
+**/.env
+**/data/
+**/*.db
+**/screenshots/
+**/browser_profile/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/*.egg-info/
+app/profile.yaml
+app/assets/*.pdf

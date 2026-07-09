@@ -1,0 +1,34 @@
+# Standalone compose for jobpipe (extracted from a larger home-server stack).
+# In production these three services live in a bigger docker-compose.yml with
+# no host ports, reached via a cloudflared tunnel by service name. This file
+# is the portable equivalent: copy to docker-compose.yml, expose a port, run.
+services:
+  jobpipe-web:
+    build: .
+    command: gunicorn jobpipe.dashboard.wsgi:application --bind 0.0.0.0:8010 --workers 2
+    env_file: app/.env
+    volumes:
+      - ./app/data:/app/data
+      - ./app/profile.yaml:/app/profile.yaml:ro
+    ports:
+      - "8010:8010"        # tunnel users: delete this and route by service name
+    restart: unless-stopped
+
+  jobpipe-scheduler:
+    build: .
+    command: python -m jobpipe.scheduler
+    env_file: app/.env
+    volumes:
+      - ./app/data:/app/data
+      - ./app/profile.yaml:/app/profile.yaml:ro
+    restart: unless-stopped
+
+  jobpipe-submitter:
+    image: mcr.microsoft.com/playwright/python:v1.44.0-jammy
+    command: sleep infinity   # dormant; exec into it for submit runs
+    env_file: app/.env
+    volumes:
+      - ./app:/app
+    working_dir: /app
+    mem_limit: 2g
+    restart: unless-stopped

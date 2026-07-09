@@ -1,0 +1,69 @@
+"""Central settings, loaded from environment / .env via pydantic-settings."""
+
+from __future__ import annotations
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    anthropic_api_key: str = ""
+    smtp_host: str = "smtp.zoho.eu"
+    smtp_port: int = 465
+    smtp_user: str = ""
+    smtp_password: str = ""
+    notify_to: str = ""
+
+    db_path: str = "/app/data/jobpipe.db"
+    profile_path: str = "profile.yaml"
+    companies_path: str = "companies.yaml"
+    searches_path: str = "searches.yaml"
+
+    # ---- v1: submission (master switch defaults OFF) ----
+    submit_enabled: bool = False
+    max_submissions_per_day: int = 10
+    submit_min_interval_s: int = 300
+    company_cooldown_days: int = 30
+    captcha_resolver: str = "human"          # human | service
+    twocaptcha_api_key: str = ""
+    dashboard_base_url: str = "http://localhost:8010"
+    imap_host: str = "imap.zoho.eu"          # confirmation tracking, same creds as SMTP
+    imap_port: int = 993
+    freetext_model: str = "claude-sonnet-4-6"  # prose quality matters more than triage
+
+    indexscan_resolve_cap: int = 100      # careers-resolution attempts per weekly run
+    dream_path: str = "dream.yaml"        # manual dream-company list
+    crawl_enabled: bool = True
+    crawl_page_cap: int = 30              # job pages fetched per domain per run
+    crawl_llm_cap: int = 50               # Haiku extraction fallback, per whole run
+    constituents_static_path: str = "constituents_static.yaml"
+
+    match_threshold: int = 7
+    match_daily_call_cap: int = 200
+    match_test_limit: int = 0        # >0 caps matcher to N postings (testing)
+    poll_test_limit: int = 0         # >0 caps each poller to N postings (testing)
+    builtin_max_pages: int = 30      # result pages walked per Built In saved search
+    poll_cooldown_days: float = 0    # >0 skips a board/search polled within N days
+    match_model: str = "claude-haiku-4-5"
+
+    request_min_interval_s: float = 1.0
+    user_agent: str = "jobpipe/0.1 (personal job-search tool)"
+
+    dashboard_port: int = 8010
+    tz: str = "Europe/London"
+
+    def redacted(self) -> dict:
+        d = self.model_dump()
+        for key in ("anthropic_api_key", "smtp_password"):
+            if d.get(key):
+                d[key] = d[key][:4] + "…redacted"
+        return d
+
+
+settings = Settings()
+
+if __name__ == "__main__":
+    import json
+
+    print(json.dumps(settings.redacted(), indent=2))

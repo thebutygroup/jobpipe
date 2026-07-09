@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Tell me what you're looking for</h1>
+<p class="meta">This creates your job-matching profile. Fields marked * are required;
+the salary figure is only used to flag jobs above or below your expectations —
+it is never shown on your matches page.</p>
+{% if error %}<div class="card" style="border-color:#a33"><p class="meta">{{ error }}</p></div>{% endif %}
+<form method="post" class="card">{% csrf_token %}
+  <style>.ob label{display:block;margin:10px 0 3px;font-size:13px;color:var(--dim)}
+  .ob input,.ob textarea,.ob select{width:100%;max-width:520px;background:#1c2128;border:1px solid #333;color:#e6e6e6;padding:7px 9px;border-radius:4px;font-size:14px}</style>
+  <div class="ob">
+    <label>User name * <span style="color:var(--dim)">(any name you like — it labels your matches page, nothing more)</span></label><input name="full_name" value="{{ form.full_name }}" required>
+    <label>Email</label><input name="email" type="email" value="{{ form.email }}">
+    <label>Where are you based?</label><input name="location" value="{{ form.location }}" placeholder="e.g. London">
+    <label>Job titles you want, comma-separated *</label>
+    <input name="target_titles" value="{{ form.target_titles }}" placeholder="e.g. Data Engineer, Analytics Engineer" required>
+    <label>Locations you'd work, comma-separated (default: London)</label>
+    <input name="locations" value="{{ form.locations }}" placeholder="London, Remote UK">
+    <label>What do you want to do? Describe your ideal role, strengths, and goals — this drives the matching.</label>
+    <textarea name="positioning" rows="6" placeholder="I'm a ... looking for ... My strengths are ...">{{ form.positioning }}</textarea>
+    <label>Experience — roles, years, domains, notable projects (optional but powerful)</label>
+    <textarea name="experience" rows="5" placeholder="5 yrs data engineering: 3 at FinCo (batch Spark ETL, dbt warehouse), 2 at StartupX (streaming, Kafka). Led migration to ...">{{ form.experience }}</textarea>
+    <label>Key skills, comma-separated</label>
+    <input name="skills" value="{{ form.skills }}" placeholder="Python, Spark, dbt, Airflow, AWS, Terraform">
+    <label>Also-acceptable title variants, comma-separated</label>
+    <input name="title_synonyms" value="{{ form.title_synonyms }}" placeholder="Analytics Engineer, ETL Developer, BI Engineer">
+    <label>Links (optional)</label>
+    <input name="link_linkedin" value="{{ form.link_linkedin }}" placeholder="LinkedIn URL" style="margin-bottom:6px">
+    <input name="link_github" value="{{ form.link_github }}" placeholder="GitHub URL" style="margin-bottom:6px">
+    <input name="link_portfolio" value="{{ form.link_portfolio }}" placeholder="Portfolio / website URL">
+    <label>Deal-breakers, comma-separated (optional)</label>
+    <input name="hard_nos" value="{{ form.hard_nos }}" placeholder="e.g. fully on-site, defence">
+    <label>Minimum salary (GBP, numbers only)</label>
+    <input name="salary_min" value="{{ form.salary_min }}" placeholder="70000">
+    <label>Preferred salary (optional)</label>
+    <input name="salary_pref" value="{{ form.salary_pref }}" placeholder="85000">
+    <p style="margin-top:14px"><button type="submit">Create my profile</button></p>
+    <details style="margin-top:16px">
+      <summary class="meta" style="cursor:pointer">Advanced: paste a full profile YAML instead</summary>
+      <p class="meta">Everything above as YAML, plus any extra sections you like
+      (experience, skills, projects) — the matcher reads the whole document.
+      If filled, this replaces the form entirely.</p>
+      <textarea name="yaml_override" rows="10" placeholder="identity:&#10;  full_name: ...&#10;preferences:&#10;  target_titles: [...]&#10;positioning_summary: >&#10;  ...">{{ form.yaml_override }}</textarea>
+    </details>
+  </div>
+</form>
+{% endblock %}

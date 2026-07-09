@@ -1,0 +1,6 @@
+# Dream-company list: crawled/resolved weekly even if never seen on a job board.
+# website is optional but makes resolution instant and reliable.
+- name: Anthropic
+  website: https://www.anthropic.com
+- name: Palantir
+  website: https://www.palantir.com
