@@ -37,7 +37,7 @@ def seconds_since_last_submission(conn) -> float:
     import datetime as dt
 
     last = dt.datetime.fromisoformat(row["m"])
-    return (dt.datetime.now() - last).total_seconds()
+    return (dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) - last).total_seconds()
 
 
 def company_in_cooldown(conn, company_id: int) -> bool:

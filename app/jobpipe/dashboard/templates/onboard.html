@@ -9,7 +9,7 @@ it is never shown on your matches page.</p>
   <style>.ob label{display:block;margin:10px 0 3px;font-size:13px;color:var(--dim)}
   .ob input,.ob textarea,.ob select{width:100%;max-width:520px;background:#1c2128;border:1px solid #333;color:#e6e6e6;padding:7px 9px;border-radius:4px;font-size:14px}</style>
   <div class="ob">
-    <label>User name * <span style="color:var(--dim)">(any name you like — it labels your matches page, nothing more)</span></label><input name="full_name" value="{{ form.full_name }}" required>
+    <label>User name * <span style="color:var(--dim)">(letters, numbers, - or _ · max 30 · becomes your page address: /job_matches/&lt;name&gt;)</span></label><input name="full_name" value="{{ form.full_name }}" required maxlength="30" pattern="[A-Za-z0-9_-]{1,30}">
     <label>Email</label><input name="email" type="email" value="{{ form.email }}">
     <label>Where are you based?</label><input name="location" value="{{ form.location }}" placeholder="e.g. London">
     <label>Job titles you want, comma-separated *</label>

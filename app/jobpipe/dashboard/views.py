@@ -100,6 +100,13 @@ def _latest_outcomes(app_ids: list[int]) -> dict[int, str]:
 
 
 @require_GET
+def landing(request):
+    """Public front door: what this is, how to onboard, what to expect,
+    how to read your matches. No job data, no internal links."""
+    return render(request, "landing.html", {"hide_internal_nav": True})
+
+
+@require_GET
 def today(request):
     apps = _rows(APP_QUERY + "WHERE a.state IN ('PENDING_REVIEW','NEEDS_HUMAN') "
                  "ORDER BY m.score DESC, a.created_at DESC")
@@ -198,7 +205,8 @@ def user_matches(request, user_ref: str):
         a["reasons"] = json.loads(a.get("reasons_json") or "[]")
         a["highlights"] = json.loads(a.get("highlights_json") or "[]")
     return render(request, "user_matches.html",
-                  {"rows": rows, "user_ref": user_ref, "q": q, "sort": sort})
+                  {"rows": rows, "user_ref": user_ref, "q": q, "sort": sort,
+                   "hide_internal_nav": True})
 
 
 @require_GET
@@ -214,7 +222,7 @@ def job_match_detail(request, user_ref: str, job_id: int):
     # rendered as relative signals, never values.
     return render(request, "detail.html", {
         "app": app, "fields": [], "gaps": [],
-        "public_view": True, "redacted_n": 0,
+        "public_view": True, "redacted_n": 0, "hide_internal_nav": True,
         "salary_signal": _salary_signal_for(user_ref, app),
         "reasons": json.loads(app.get("reasons_json") or "[]"),
         "highlights": json.loads(app.get("highlights_json") or "[]"),
@@ -419,21 +427,50 @@ def app_applied(request, app_id: int):
     return redirect(f"/app/{app_id}")
 
 
+USERNAME_RE = __import__("re").compile(r"^[A-Za-z0-9_-]{1,30}$")
+
+
+def _username_error(conn, name: str) -> str:
+    """Validate a signup username destined to be the public page ref."""
+    if not USERNAME_RE.match(name or ""):
+        return ("user name must be 1-30 characters: letters, numbers, "
+                "hyphen or underscore only (it becomes your page URL)")
+    ref = name.lower()
+    if conn.execute("SELECT 1 FROM applicants WHERE lower(user_ref) = ? "
+                    "OR lower(name) = ?", (ref, ref)).fetchone():
+        return "that user name is taken — pick another"
+    return ""
+
+
 def onboard(request):
     """Public onboarding: a new user describes what they want; we build and
     validate a Profile, store it on their applicant row, and hand back their
     personal matches link. Matching starts only when Joe kicks it off
     (scripts or the scheduled run - applicants start INACTIVE)."""
-    import secrets
 
     import yaml as _yaml
 
     from ..profile import ProfileError, load_profile_yaml
 
     if request.method == "GET":
-        return render(request, "onboard.html", {})
+        return render(request, "onboard.html", {"hide_internal_nav": True})
 
     f = request.POST
+    # Abuse guards: hard length caps before anything is parsed or stored.
+    CAPS = {"yaml_override": 20000, "positioning": 4000, "experience": 4000}
+    for field, cap in CAPS.items():
+        if len(f.get(field) or "") > cap:
+            return render(request, "onboard.html",
+                          {"error": f"{field} is too long (max {cap} characters)",
+                           "form": f}, status=400)
+    if any(len(f.get(k) or "") > 300 for k in
+           ("full_name", "email", "location", "target_titles", "title_synonyms",
+            "locations", "hard_nos", "skills", "link_linkedin", "link_github",
+            "link_portfolio")):
+        return render(request, "onboard.html",
+                      {"error": "one of the short fields is too long", "form": f,
+                       "hide_internal_nav": True},
+                      status=400)
     # Advanced path: a pasted profile YAML wins outright and is stored
     # verbatim — full fidelity, including sections beyond the core schema
     # (experience, skills, projects). The matcher reads the raw YAML.
@@ -443,10 +480,15 @@ def onboard(request):
             prof = load_profile_yaml(yaml_override)
         except ProfileError as e:
             return render(request, "onboard.html",
-                          {"error": str(e), "form": f}, status=400)
-        user_ref = secrets.token_urlsafe(9)
+                          {"error": str(e), "form": f, "hide_internal_nav": True}, status=400)
         conn = connect()
         try:
+            err = _username_error(conn, prof.identity.full_name)
+            if err:
+                return render(request, "onboard.html",
+                              {"error": err, "form": f, "hide_internal_nav": True},
+                              status=400)
+            user_ref = prof.identity.full_name.lower()
             with tx(conn):
                 conn.execute(
                     "INSERT INTO applicants (name, profile_path, profile_yaml,"
@@ -455,7 +497,8 @@ def onboard(request):
         finally:
             conn.close()
         return render(request, "onboard_done.html",
-                      {"name": prof.identity.full_name, "user_ref": user_ref})
+                      {"name": prof.identity.full_name, "user_ref": user_ref,
+                       "hide_internal_nav": True})
 
     titles = [t.strip() for t in (f.get("target_titles") or "").split(",") if t.strip()]
     locations = [loc.strip() for loc in (f.get("locations") or "London").split(",") if loc.strip()]
@@ -490,13 +533,18 @@ def onboard(request):
         load_profile_yaml(yaml_text)   # full pydantic validation before storing
     except ProfileError as e:
         return render(request, "onboard.html",
-                      {"error": str(e), "form": f}, status=400)
+                      {"error": str(e), "form": f, "hide_internal_nav": True}, status=400)
     if not data["identity"]["full_name"]:
         return render(request, "onboard.html",
-                      {"error": "name is required", "form": f}, status=400)
-    user_ref = secrets.token_urlsafe(9)
+                      {"error": "name is required", "form": f, "hide_internal_nav": True}, status=400)
     conn = connect()
     try:
+        err = _username_error(conn, data["identity"]["full_name"])
+        if err:
+            return render(request, "onboard.html",
+                          {"error": err, "form": f, "hide_internal_nav": True},
+                          status=400)
+        user_ref = data["identity"]["full_name"].lower()
         with tx(conn):
             conn.execute(
                 "INSERT INTO applicants (name, profile_path, profile_yaml,"
@@ -505,4 +553,5 @@ def onboard(request):
     finally:
         conn.close()
     return render(request, "onboard_done.html",
-                  {"name": data["identity"]["full_name"], "user_ref": user_ref})
+                  {"name": data["identity"]["full_name"], "user_ref": user_ref,
+                   "hide_internal_nav": True})

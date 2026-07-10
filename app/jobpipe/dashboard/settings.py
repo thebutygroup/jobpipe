@@ -28,6 +28,9 @@ TEMPLATES = [{
     "OPTIONS": {"context_processors": []},
 }]
 USE_TZ = True
+# Django's implicit default is America/Chicago and it exports TZ to the whole
+# process — pin to the deployment timezone instead (matters for daily caps).
+TIME_ZONE = os.environ.get("TZ", "Europe/London")
 # TLS terminates at the Cloudflare tunnel; trust its forwarded proto.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = True

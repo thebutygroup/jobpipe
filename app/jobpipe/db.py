@@ -136,7 +136,11 @@ def _backfill_user_refs(conn) -> None:
 
 
 def now() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%S")
+    """UTC, always. Naive local time breaks daily caps and submission
+    intervals the moment the process TZ differs from expectations (Django
+    exports TIME_ZONE to the whole process). SQLite's date('now') is UTC,
+    so storing UTC makes every comparison consistent."""
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime())
 
 
 def connect(db_path: str | None = None) -> sqlite3.Connection:

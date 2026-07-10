@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>jobpipe</h1>
+<p class="meta" style="font-size:15px;max-width:560px">A job-discovery pipeline.
+It watches company job boards and searches continuously, scores every posting
+against what <em>you</em> said you want, and gives you a private page of ranked
+matches — with the reasoning shown, not just a number.</p>
+
+<div class="card">
+  <h2>1 · Sign up</h2>
+  <p class="meta">Fill in one form: the job titles you want, and — most
+  importantly — a few sentences on what you're actually looking for. That free
+  text is what drives the matching, so the more specific, the better the
+  matches. A minimum salary is optional and only ever used to flag jobs above
+  or below your expectations; it's never displayed.</p>
+  <p><a href="/onboard"><strong>→ Create your profile</strong></a></p>
+</div>
+
+<div class="card">
+  <h2>2 · What to expect</h2>
+  <p class="meta">Sign-ups are reviewed by a human before any matching runs —
+  usually within a day. Your matches page address is simply your user name: <span style="white-space:nowrap">/job_matches/&lt;your-user-name&gt;</span>.
+  Bookmark it; it's yours alone and shows no name, no contact details — just
+  your matches. It stays empty until your first matching run completes.</p>
+</div>
+
+<div class="card">
+  <h2>3 · Reviewing your matches</h2>
+  <p class="meta">Each match carries a score out of 10 from a strict screener
+  reading the full job description against your profile. Open a match to see:
+  <span class="good">✓ green highlights</span> where the job <em>exceeds</em>
+  what you asked for, a "you want / the job offers" alignment table explaining
+  the score, the full description, a relative salary signal, and links to the
+  listing. Filter by title keyword and sort by score, title, company or
+  recency. Apply directly with the company — the listing links take you
+  there.</p>
+</div>
+
+<p class="meta">Site map: <a href="/onboard">sign up</a> · your matches
+(personal link from sign-up) · questions — ask whoever sent you here.</p>
+{% endblock %}

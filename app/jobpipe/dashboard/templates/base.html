@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<link rel="icon" type="image/svg+xml" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="%230d1117"/><text x="16" y="24" font-family="Courier New,monospace" font-size="26" font-weight="bold" fill="%2339ff5a" text-anchor="middle">j</text></svg>'>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>jobpipe</title>
 <style>
@@ -38,7 +39,7 @@ border:1px solid var(--line);border-radius:4px;padding:3px 6px}
 <body><div class="wrap">
 <h1>jobpipe</h1>
 <div class="sub">read-only · v0</div>
-<nav><a href="/">today</a> <a href="/all">all</a> <a href="/applicants">applicants</a> <a href="/stats">stats</a></nav>
+<nav><a href="/">jobpipe</a>{% if not hide_internal_nav %} <a href="/queue">queue</a> <a href="/all">all</a> <a href="/applicants">applicants</a> <a href="/stats">stats</a>{% endif %}</nav>
 {% block content %}{% endblock %}
 </div></body>
 </html>
