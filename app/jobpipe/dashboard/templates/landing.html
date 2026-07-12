@@ -17,6 +17,16 @@ matches — with the reasoning shown, not just a number.</p>
 </div>
 
 <div class="card">
+  <h2>Already signed up?</h2>
+  {% if go_error %}<p class="meta" style="color:#e3b341">{{ go_error }}</p>{% endif %}
+  <form method="get" action="/go" class="bar">
+    <input name="u" placeholder="your user name" maxlength="30" style="width:200px">
+    <button type="submit">open my matches</button>
+  </form>
+  <p class="meta">Your matches live at /job_matches/&lt;your-user-name&gt; — this just takes you there.</p>
+</div>
+
+<div class="card">
   <h2>2 · What to expect</h2>
   <p class="meta">Sign-ups are reviewed by a human before any matching runs —
   usually within a day. Your matches page address is simply your user name: <span style="white-space:nowrap">/job_matches/&lt;your-user-name&gt;</span>.
@@ -36,6 +46,5 @@ matches — with the reasoning shown, not just a number.</p>
   there.</p>
 </div>
 
-<p class="meta">Site map: <a href="/onboard">sign up</a> · your matches
-(personal link from sign-up) · questions — ask whoever sent you here.</p>
+<p class="meta">Site map: <a href="/onboard">sign up</a> · <a href="/go">your matches</a> (just your user name) · questions — ask whoever sent you here.</p>
 {% endblock %}

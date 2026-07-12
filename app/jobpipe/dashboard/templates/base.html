@@ -23,6 +23,32 @@ padding:14px 16px;margin-bottom:12px}
 .card h2{font-size:16px}
 .score{font-weight:700;color:var(--det);white-space:nowrap}
 .meta{color:var(--dim);font-size:13px;margin:2px 0 8px}
+input,select,textarea{background:#1c2128;border:1px solid #333;color:var(--fg,#e6e6e6);
+  padding:7px 10px;border-radius:6px;font-size:14px;font-family:inherit}
+input:focus,select:focus,textarea:focus{outline:1px solid var(--det);border-color:var(--det)}
+button{background:var(--det);color:#04241c;border:none;padding:7px 14px;border-radius:6px;
+  font-size:13px;font-weight:600;cursor:pointer}
+button:hover{filter:brightness(1.1)}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:14px 0}
+.bar .on{font-weight:700;text-decoration:underline}
+.tbl{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:6px}
+.tbl th{text-align:left;color:var(--dim);font-size:11px;text-transform:uppercase;
+  letter-spacing:.05em;padding:8px;border-bottom:1px solid var(--line,#30363d)}
+.tbl td{padding:9px 8px;border-bottom:1px solid var(--line,#30363d);vertical-align:top}
+.tbl tbody tr:hover{background:rgba(93,202,165,.05)}
+.tbl a.plain{color:inherit}
+.score{display:inline-block;min-width:22px;text-align:center;padding:2px 7px;
+  border-radius:10px;font-weight:700;font-size:12px;background:#30363d;color:#c9d1d9}
+.score.s7,.score.s8{background:#1c4429;color:#6fcf76}
+.score.s9,.score.s10{background:#1f6132;color:#7ee787}
+@media (max-width:719px){
+  .tbl thead{display:none}
+  .tbl,.tbl tbody,.tbl tr,.tbl td{display:block;width:100%;box-sizing:border-box}
+  .tbl tr{border:1px solid var(--line,#30363d);border-radius:8px;margin:10px 0;padding:6px 10px}
+  .tbl td{border:none;padding:4px 0}
+  .tbl td[data-l]:not([data-l=""])::before{content:attr(data-l) " ";color:var(--dim);
+    font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-right:6px}
+}
 ul{margin-left:18px;font-size:13.5px}
 .good{color:var(--ok,#6fcf76);font-size:13px}
 .flag{color:var(--hum)}
@@ -38,7 +64,7 @@ border:1px solid var(--line);border-radius:4px;padding:3px 6px}
 </head>
 <body><div class="wrap">
 <h1>jobpipe</h1>
-<div class="sub">read-only · v0</div>
+<div class="sub">jobpipe</div>
 <nav><a href="/">jobpipe</a>{% if not hide_internal_nav %} <a href="/queue">queue</a> <a href="/all">all</a> <a href="/applicants">applicants</a> <a href="/stats">stats</a>{% endif %}</nav>
 {% block content %}{% endblock %}
 </div></body>

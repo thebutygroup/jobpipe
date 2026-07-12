@@ -10,6 +10,7 @@ urlpatterns = [
     path("stats", views.stats, name="stats"),
     path("applicants", views.applicants_index, name="applicants"),
     path("onboard", views.onboard, name="onboard"),
+    path("go", views.go_to_matches, name="go"),
     path("outcome/<int:outcome_id>/link", views.outcome_link, name="outcome_link"),
     path("job_matches/<str:user_ref>", views.user_matches, name="user_matches"),
     path("job_matches/<str:user_ref>/<int:job_id>", views.job_match_detail,

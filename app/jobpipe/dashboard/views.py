@@ -312,8 +312,15 @@ def app_resume(request, app_id: int):
 
 @require_GET
 def all_postings(request):
+    """Every application across ALL users. Scores are per-profile, so the
+    user column + filter matter: the same job scores differently per person."""
+    from datetime import datetime
+
+    from .. import analytics
+
     state = request.GET.get("state", "")
     min_score = request.GET.get("min_score", "")
+    user = request.GET.get("user", "")
     where, params = [], []
     if state:
         where.append("a.state = ?")
@@ -321,19 +328,33 @@ def all_postings(request):
     if min_score.isdigit():
         where.append("m.score >= ?")
         params.append(int(min_score))
+    if user:
+        where.append("ap.user_ref = ?")
+        params.append(user)
     q, sort, order = _list_params(request)
     if q:
         where.append("p.title LIKE ?")
         params.append(f"%{q}%")
     clause = ("WHERE " + " AND ".join(where)) if where else ""
     rows = _rows(
-        "SELECT a.id, a.state, a.created_at, c.name AS company, p.title, p.location,"
-        "       p.apply_url, m.score "
+        "SELECT a.id, a.state, a.created_at, c.name AS company, p.title,"
+        "       p.apply_url, p.description_text, m.score,"
+        "       ap.name AS user_name, ap.user_ref "
         "FROM applications a JOIN postings p ON p.id = a.posting_id "
         "JOIN companies c ON c.id = p.company_id "
+        "JOIN applicants ap ON ap.id = a.applicant_id "
         "LEFT JOIN matches m ON m.posting_id = a.posting_id "
+        "AND m.applicant_id = a.applicant_id "
         f"{clause} ORDER BY {order} LIMIT 500", tuple(params))
-    return render(request, "all.html", {"q": q, "sort": sort, "rows": rows, "state": state, "min_score": min_score})
+    for r in rows:
+        try:
+            r["date"] = datetime.fromisoformat(r["created_at"]).strftime("%b %-d, %Y")
+        except ValueError:
+            r["date"] = (r["created_at"] or "")[:10]
+        r["salary"] = analytics.salary_band(r.get("description_text") or "")
+    users = _rows("SELECT name, user_ref FROM applicants WHERE active = 1 ORDER BY name")
+    return render(request, "all.html", {"q": q, "sort": sort, "rows": rows,
+                  "state": state, "min_score": min_score, "user": user, "users": users})
 
 
 @require_GET
@@ -555,3 +576,15 @@ def onboard(request):
     return render(request, "onboard_done.html",
                   {"name": data["identity"]["full_name"], "user_ref": user_ref,
                    "hide_internal_nav": True})
+
+
+@require_GET
+def go_to_matches(request):
+    """Landing-page helper: type your user name, land on your matches."""
+    name = (request.GET.get("u") or "").strip().lower()
+    if not USERNAME_RE.match(name):
+        return render(request, "landing.html",
+                      {"hide_internal_nav": True,
+                       "go_error": "user names are 1-30 letters, numbers, - or _"},
+                      status=400)
+    return redirect(f"/job_matches/{name}")
