@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     aggregator_max_pages: int = 2          # pages per search per run
     adzuna_daily_call_cap: int = 100       # free tier ~250/day; stay well under
 
+    # ---- self-serve signup ----
+    signup_daily_cap: int = 3        # auto-activated signups per day; beyond -> pending + flag
+    signup_instant_matches: int = 20  # postings scored immediately for a new signup
+
     match_threshold: int = 7
     match_daily_call_cap: int = 200
     match_test_limit: int = 0        # >0 caps matcher to N postings (testing)

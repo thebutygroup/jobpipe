@@ -6,6 +6,7 @@ urlpatterns = [
     path("", views.landing, name="landing"),
     path("queue", views.today, name="today"),
     path("all", views.all_postings, name="all"),
+    path("all/<str:user_ref>", views.all_postings, name="all_user"),
     path("app/<int:app_id>", views.app_detail, name="app_detail"),
     path("stats", views.stats, name="stats"),
     path("sources", views.sources, name="sources"),

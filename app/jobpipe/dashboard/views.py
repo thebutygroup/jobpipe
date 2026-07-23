@@ -99,19 +99,22 @@ def _latest_outcomes(app_ids: list[int]) -> dict[int, str]:
     return {r["application_id"]: r["outcome_type"].replace("_", " ") for r in rows}
 
 
-@require_GET
-def landing(request):
-    """Public front door: what this is, how to onboard, what to expect,
-    how to read your matches. No job data, no internal links."""
+def _landing_ctx(**extra) -> dict:
     from ..sources import registry
 
     display = {"greenhouse": "Greenhouse", "lever": "Lever", "ashby": "Ashby",
                "workable": "Workable", "builtin": "Built In", "adzuna": "Adzuna",
                "reed": "Reed"}
     names = [display.get(n, n.title()) for n in registry.all_sources()]
-    return render(request, "landing.html",
-                  {"hide_internal_nav": True, "source_names": names,
-                   "n_sources": len(names)})
+    return {"hide_internal_nav": True, "source_names": names,
+            "n_sources": len(names), **extra}
+
+
+@require_GET
+def landing(request):
+    """Public front door: the pitch and the quick-start signup form.
+    No job data, no internal links."""
+    return render(request, "landing.html", _landing_ctx())
 
 
 @require_GET
@@ -127,7 +130,12 @@ def today(request):
     latest = _latest_outcomes([a["id"] for a in apps])
     for a in apps:
         a["outcome"] = latest.get(a["id"], "")
-    return render(request, "today.html", {"apps": apps})
+    conn = connect()
+    try:
+        capped = signups_capped_today(conn)
+    finally:
+        conn.close()
+    return render(request, "today.html", {"apps": apps, "signups_capped": capped})
 
 
 def _timeline(app_id: int) -> list[dict]:
@@ -319,16 +327,23 @@ def app_resume(request, app_id: int):
 
 
 @require_GET
-def all_postings(request):
-    """Every application across ALL users. Scores are per-profile, so the
-    user column + filter matter: the same job scores differently per person."""
+def all_postings(request, user_ref: str = ""):
+    """The dense table view of applications.
+
+    /all           — internal: every user, user column + filter, links to the
+                     private review pages.
+    /all/<user_ref> — PUBLIC per-user variant (same trust model as
+                     /job_matches/<user_ref>): scoped to one user, no names,
+                     no other users' data, rows link to the public match
+                     detail pages only."""
     from datetime import datetime
 
     from .. import analytics
 
+    public = bool(user_ref)
     state = request.GET.get("state", "")
     min_score = request.GET.get("min_score", "")
-    user = request.GET.get("user", "")
+    user = user_ref or request.GET.get("user", "")
     where, params = [], []
     if state:
         where.append("a.state = ?")
@@ -346,7 +361,8 @@ def all_postings(request):
     clause = ("WHERE " + " AND ".join(where)) if where else ""
     rows = _rows(
         "SELECT a.id, a.state, a.created_at, c.name AS company, p.title,"
-        "       p.apply_url, p.description_text, m.score,"
+        "       p.id AS posting_id, p.apply_url, p.canonical_apply_url,"
+        "       p.description_text, m.score,"
         "       ap.name AS user_name, ap.user_ref "
         "FROM applications a JOIN postings p ON p.id = a.posting_id "
         "JOIN companies c ON c.id = p.company_id "
@@ -360,9 +376,21 @@ def all_postings(request):
         except ValueError:
             r["date"] = (r["created_at"] or "")[:10]
         r["salary"] = analytics.salary_band(r.get("description_text") or "")
+        r["listing_url"] = r.get("canonical_apply_url") or r.get("apply_url") or ""
+    if public:
+        # 404 for unknown refs so the page doesn't render as an empty shell
+        known = _rows("SELECT 1 AS x FROM applicants WHERE user_ref = ?", (user,))
+        if not known:
+            return HttpResponse("not found", status=404)
+        return render(request, "all.html", {
+            "q": q, "sort": sort, "rows": rows, "state": state,
+            "min_score": min_score, "user": user, "users": [],
+            "public_user_ref": user, "hide_internal_nav": True,
+            "base_path": f"/all/{user}"})
     users = _rows("SELECT name, user_ref FROM applicants WHERE active = 1 ORDER BY name")
     return render(request, "all.html", {"q": q, "sort": sort, "rows": rows,
-                  "state": state, "min_score": min_score, "user": user, "users": users})
+                  "state": state, "min_score": min_score, "user": user, "users": users,
+                  "public_user_ref": "", "base_path": "/all"})
 
 
 @require_GET
@@ -461,9 +489,11 @@ def applicants_index(request):
             "     WHERE a2.applicant_id = ap.id "
             "     AND o.outcome_type IN ('interview_invite','assessment')) AS n_interviews "
             "FROM applicants ap ORDER BY ap.active DESC, ap.name").fetchall()
+        capped = signups_capped_today(conn)
     finally:
         conn.close()
-    return render(request, "applicants.html", {"applicants": [dict(r) for r in rows]})
+    return render(request, "applicants.html",
+                  {"applicants": [dict(r) for r in rows], "signups_capped": capped})
 
 
 @require_POST
@@ -498,11 +528,88 @@ def _username_error(conn, name: str) -> str:
     return ""
 
 
+def _auto_activations_today(conn) -> int:
+    return conn.execute(
+        "SELECT COUNT(*) AS n FROM events WHERE event_type = 'signup_auto_activated' "
+        "AND created_at >= date('now')").fetchone()["n"]
+
+
+def signups_capped_today(conn) -> int:
+    """How many signups hit the daily auto-activation cap today (the flag Joe
+    sees on internal pages)."""
+    return conn.execute(
+        "SELECT COUNT(*) AS n FROM events WHERE event_type = 'signup_capped' "
+        "AND created_at >= date('now')").fetchone()["n"]
+
+
+def _instant_mini_run(user_ref: str) -> None:
+    """Background thread: score the newest N pre-filtered postings for a fresh
+    signup so their page has matches within minutes, not at the next 06:45 run.
+    Errors are logged, never raised — signup must not fail on matching."""
+    import logging
+    import threading
+
+    from ..config import settings as _settings
+
+    def work():
+        log = logging.getLogger("jobpipe.signup")
+        conn = connect()
+        try:
+            from ..matching import matcher
+            from ..profile import load_applicant_profile
+            row = conn.execute("SELECT * FROM applicants WHERE user_ref = ?",
+                               (user_ref,)).fetchone()
+            if not row:
+                return
+            profile = load_applicant_profile(row)
+            stats = matcher.run(conn, profile, row["id"],
+                                raw_yaml=row["profile_yaml"] or "",
+                                max_postings=_settings.signup_instant_matches)
+            with tx(conn):
+                from ..db import log_event
+                log_event(conn, "signup_instant_match",
+                          payload={"user_ref": user_ref, **{k: v for k, v in stats.items()}})
+            log.info("instant mini-run for %s: %s", user_ref, stats)
+        except Exception:
+            log.exception("instant mini-run failed for %s", user_ref)
+        finally:
+            conn.close()
+
+    threading.Thread(target=work, daemon=True, name=f"mini-run-{user_ref}").start()
+
+
+def _activate_or_flag(conn, user_ref: str) -> bool:
+    """Auto-activate a signup if under today's cap (returns True) or leave it
+    pending and flag it for Joe (returns False)."""
+    from ..config import settings as _settings
+    from ..db import log_event
+
+    if _auto_activations_today(conn) < _settings.signup_daily_cap:
+        with tx(conn):
+            conn.execute("UPDATE applicants SET active = 1 WHERE user_ref = ?", (user_ref,))
+            log_event(conn, "signup_auto_activated", payload={"user_ref": user_ref})
+        _instant_mini_run(user_ref)
+        return True
+    with tx(conn):
+        log_event(conn, "signup_capped", payload={"user_ref": user_ref})
+    try:  # best-effort heads-up; never blocks signup
+        from .. import notify
+        notify.send_email(
+            subject="[jobpipe] signup cap hit — approval needed",
+            html_body=f"<p><b>{user_ref}</b> signed up but today's auto-activation "
+                      f"cap ({_settings.signup_daily_cap}) was already reached. "
+                      f"They're pending — activate from the applicants page flag "
+                      f"or scripts/approve_user.py.</p>")
+    except Exception:
+        pass
+    return False
+
+
 def onboard(request):
     """Public onboarding: a new user describes what they want; we build and
     validate a Profile, store it on their applicant row, and hand back their
-    personal matches link. Matching starts only when Joe kicks it off
-    (scripts or the scheduled run - applicants start INACTIVE)."""
+    personal matches link. Signups auto-activate (instant mini match run)
+    up to SIGNUP_DAILY_CAP per day; beyond that they're pending and flagged."""
 
     import yaml as _yaml
 
@@ -550,13 +657,23 @@ def onboard(request):
                     "INSERT INTO applicants (name, profile_path, profile_yaml,"
                     " user_ref, active) VALUES (?, '', ?, ?, 0)",
                     (prof.identity.full_name, yaml_override, user_ref))
+            activated = _activate_or_flag(conn, user_ref)
         finally:
             conn.close()
         return render(request, "onboard_done.html",
                       {"name": prof.identity.full_name, "user_ref": user_ref,
-                       "hide_internal_nav": True})
+                       "activated": activated, "hide_internal_nav": True})
 
     titles = [t.strip() for t in (f.get("target_titles") or "").split(",") if t.strip()]
+    if not titles:
+        return render(request, "onboard.html",
+                      {"error": "tell us at least one job title you want",
+                       "form": f, "hide_internal_nav": True}, status=400)
+    if not (f.get("positioning") or "").strip():
+        return render(request, "onboard.html",
+                      {"error": "one sentence on what you're looking for is required — "
+                                "it's what drives the matching",
+                       "form": f, "hide_internal_nav": True}, status=400)
     locations = [loc.strip() for loc in (f.get("locations") or "London").split(",") if loc.strip()]
     links = {k: (f.get(f"link_{k}") or "").strip()
              for k in ("linkedin", "github", "portfolio")}
@@ -606,11 +723,12 @@ def onboard(request):
                 "INSERT INTO applicants (name, profile_path, profile_yaml,"
                 " user_ref, active) VALUES (?, '', ?, ?, 0)",
                 (data["identity"]["full_name"], yaml_text, user_ref))
+        activated = _activate_or_flag(conn, user_ref)
     finally:
         conn.close()
     return render(request, "onboard_done.html",
                   {"name": data["identity"]["full_name"], "user_ref": user_ref,
-                   "hide_internal_nav": True})
+                   "activated": activated, "hide_internal_nav": True})
 
 
 @require_GET
@@ -619,7 +737,6 @@ def go_to_matches(request):
     name = (request.GET.get("u") or "").strip().lower()
     if not USERNAME_RE.match(name):
         return render(request, "landing.html",
-                      {"hide_internal_nav": True,
-                       "go_error": "user names are 1-30 letters, numbers, - or _"},
+                      _landing_ctx(go_error="user names are 1-30 letters, numbers, - or _"),
                       status=400)
     return redirect(f"/job_matches/{name}")

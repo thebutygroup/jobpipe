@@ -133,7 +133,8 @@ def pending_postings(conn, applicant_id: int) -> list:
         "            AND e.event_type = 'prefilter:PREFILTERED') "
         "AND NOT EXISTS (SELECT 1 FROM matches m JOIN postings p2 ON p2.id = m.posting_id "
         "                WHERE m.posting_id = p.id AND m.applicant_id = ? "
-        "                AND p2.content_hash = p.content_hash)", (applicant_id,)
+        "                AND p2.content_hash = p.content_hash) "
+        "ORDER BY p.first_seen_at DESC", (applicant_id,)
     ).fetchall()
 
 
@@ -149,7 +150,10 @@ def ensure_applicant(conn, profile: Profile) -> int:
     return cur.lastrowid
 
 
-def run(conn, profile: Profile, applicant_id: int, client=None, raw_yaml: str = "") -> dict:
+def run(conn, profile: Profile, applicant_id: int, client=None, raw_yaml: str = "",
+        max_postings: int = 0) -> dict:
+    """Score pending postings for one applicant. max_postings > 0 caps the run
+    (newest postings first) — used by the instant signup mini-run."""
     if client is None:
         import anthropic
 
@@ -157,6 +161,8 @@ def run(conn, profile: Profile, applicant_id: int, client=None, raw_yaml: str = 
     stats = {"considered": 0, "matched": 0, "rejected": 0, "failed": 0, "capped": 0,
              "tokens": 0}
     pending = pending_postings(conn, applicant_id)
+    if max_postings > 0:
+        pending = pending[:max_postings]
     if settings.match_test_limit > 0:
         pending = pending[:settings.match_test_limit]
         log.info("TEST MODE: matcher limited to %d postings", len(pending))

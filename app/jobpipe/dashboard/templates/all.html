@@ -1,43 +1,65 @@
 {% extends "base.html" %}
 {% block content %}
+{% if public_user_ref %}
+<h1>Your matches</h1>
+<p class="meta">Every job matched to you, newest and best first. <strong>Scores are
+personal</strong> — they measure fit against what <em>you</em> asked for.
+Prefer cards with the full "why"? <a href="/job_matches/{{ public_user_ref }}">card view →</a></p>
+{% else %}
 <h1>All matches</h1>
 <p class="meta">Every application across every profile. <strong>Scores are personal</strong> —
 the same job scores differently for each user, so compare within one user, not across.</p>
+{% endif %}
 
 <form method="get" class="bar">
+  {% if not public_user_ref %}
   <select name="user">
     <option value="">all users</option>
     {% for u in users %}<option value="{{ u.user_ref }}" {% if u.user_ref == user %}selected{% endif %}>{{ u.name }}</option>{% endfor %}
   </select>
+  {% endif %}
   <input name="q" value="{{ q }}" placeholder="title contains…" style="width:180px">
   <input name="min_score" value="{{ min_score }}" placeholder="min" style="width:56px" title="minimum score">
   <input type="hidden" name="sort" value="{{ sort }}">
   <button type="submit">filter</button>
-  {% if q or user or min_score %}<a href="/all">clear</a>{% endif %}
+  {% if q or min_score or user %}<a href="{{ base_path }}">clear</a>{% endif %}
   <span class="meta">sort:
+    {% if public_user_ref %}
+    <a href="?q={{ q|urlencode }}&min_score={{ min_score }}&sort=score" {% if sort == "score" %}class="on"{% endif %}>score</a>
+    <a href="?q={{ q|urlencode }}&min_score={{ min_score }}&sort=title" {% if sort == "title" %}class="on"{% endif %}>title</a>
+    <a href="?q={{ q|urlencode }}&min_score={{ min_score }}&sort=company" {% if sort == "company" %}class="on"{% endif %}>company</a>
+    <a href="?q={{ q|urlencode }}&min_score={{ min_score }}&sort=newest" {% if sort == "newest" %}class="on"{% endif %}>newest</a>
+    {% else %}
     <a href="?user={{ user }}&q={{ q|urlencode }}&min_score={{ min_score }}&sort=score" {% if sort == "score" %}class="on"{% endif %}>score</a>
     <a href="?user={{ user }}&q={{ q|urlencode }}&min_score={{ min_score }}&sort=title" {% if sort == "title" %}class="on"{% endif %}>title</a>
     <a href="?user={{ user }}&q={{ q|urlencode }}&min_score={{ min_score }}&sort=company" {% if sort == "company" %}class="on"{% endif %}>company</a>
     <a href="?user={{ user }}&q={{ q|urlencode }}&min_score={{ min_score }}&sort=newest" {% if sort == "newest" %}class="on"{% endif %}>newest</a>
+    {% endif %}
   </span>
 </form>
 
 {% if rows %}
 <table class="tbl">
-  <thead><tr><th>date</th><th>company</th><th>title</th><th>salary</th><th>score</th><th>user</th><th></th></tr></thead>
+  <thead><tr><th>date</th><th>company</th><th>title</th><th>salary</th><th>score</th>{% if not public_user_ref %}<th>user</th>{% endif %}<th></th></tr></thead>
   <tbody>
   {% for r in rows %}
   <tr>
     <td data-l="date">{{ r.date }}</td>
     <td data-l="company"><a href="https://www.google.com/search?q={{ r.company|urlencode }}" target="_blank" rel="noopener">{{ r.company }}</a></td>
+    {% if public_user_ref %}
+    <td data-l="title"><a href="/job_matches/{{ public_user_ref }}/{{ r.posting_id }}" class="plain">{{ r.title }}</a></td>
+    {% else %}
     <td data-l="title"><a href="/app/{{ r.id }}" class="plain">{{ r.title }}</a></td>
+    {% endif %}
     <td data-l="salary">{{ r.salary|default:"—" }}</td>
     <td data-l="score">{% if r.score != None %}<span class="score s{{ r.score }}">{{ r.score }}</span>{% else %}—{% endif %}</td>
+    {% if not public_user_ref %}
     <td data-l="user"><a href="/job_matches/{{ r.user_ref }}">{{ r.user_name }}</a></td>
-    <td data-l=""><a href="{{ r.apply_url }}" target="_blank" rel="noopener" title="job listing">↗</a></td>
+    {% endif %}
+    <td data-l=""><a href="{{ r.listing_url }}" target="_blank" rel="noopener" title="job listing">↗</a></td>
   </tr>
   {% endfor %}
   </tbody>
 </table>
-{% else %}<div class="empty">Nothing matches those filters.</div>{% endif %}
+{% else %}<div class="empty">{% if public_user_ref %}No matches yet — they appear after your first matching run.{% else %}Nothing matches those filters.{% endif %}</div>{% endif %}
 {% endblock %}
