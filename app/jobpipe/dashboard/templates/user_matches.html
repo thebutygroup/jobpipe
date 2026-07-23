@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="sub">matches for {{ user_ref }}</div>
+<div class="sub">matches for {{ user_ref }} · <a href="/all/{{ user_ref }}">table view</a></div>
 {% if rows %}
   <form method="get" class="meta" style="margin:10px 0">
   <input name="q" value="{{ q }}" placeholder="filter title, e.g. data engineer"

@@ -319,16 +319,23 @@ def app_resume(request, app_id: int):
 
 
 @require_GET
-def all_postings(request):
-    """Every application across ALL users. Scores are per-profile, so the
-    user column + filter matter: the same job scores differently per person."""
+def all_postings(request, user_ref: str = ""):
+    """The dense table view of applications.
+
+    /all           — internal: every user, user column + filter, links to the
+                     private review pages.
+    /all/<user_ref> — PUBLIC per-user variant (same trust model as
+                     /job_matches/<user_ref>): scoped to one user, no names,
+                     no other users' data, rows link to the public match
+                     detail pages only."""
     from datetime import datetime
 
     from .. import analytics
 
+    public = bool(user_ref)
     state = request.GET.get("state", "")
     min_score = request.GET.get("min_score", "")
-    user = request.GET.get("user", "")
+    user = user_ref or request.GET.get("user", "")
     where, params = [], []
     if state:
         where.append("a.state = ?")
@@ -346,7 +353,8 @@ def all_postings(request):
     clause = ("WHERE " + " AND ".join(where)) if where else ""
     rows = _rows(
         "SELECT a.id, a.state, a.created_at, c.name AS company, p.title,"
-        "       p.apply_url, p.description_text, m.score,"
+        "       p.id AS posting_id, p.apply_url, p.canonical_apply_url,"
+        "       p.description_text, m.score,"
         "       ap.name AS user_name, ap.user_ref "
         "FROM applications a JOIN postings p ON p.id = a.posting_id "
         "JOIN companies c ON c.id = p.company_id "
@@ -360,9 +368,21 @@ def all_postings(request):
         except ValueError:
             r["date"] = (r["created_at"] or "")[:10]
         r["salary"] = analytics.salary_band(r.get("description_text") or "")
+        r["listing_url"] = r.get("canonical_apply_url") or r.get("apply_url") or ""
+    if public:
+        # 404 for unknown refs so the page doesn't render as an empty shell
+        known = _rows("SELECT 1 AS x FROM applicants WHERE user_ref = ?", (user,))
+        if not known:
+            return HttpResponse("not found", status=404)
+        return render(request, "all.html", {
+            "q": q, "sort": sort, "rows": rows, "state": state,
+            "min_score": min_score, "user": user, "users": [],
+            "public_user_ref": user, "hide_internal_nav": True,
+            "base_path": f"/all/{user}"})
     users = _rows("SELECT name, user_ref FROM applicants WHERE active = 1 ORDER BY name")
     return render(request, "all.html", {"q": q, "sort": sort, "rows": rows,
-                  "state": state, "min_score": min_score, "user": user, "users": users})
+                  "state": state, "min_score": min_score, "user": user, "users": users,
+                  "public_user_ref": "", "base_path": "/all"})
 
 
 @require_GET

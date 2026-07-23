@@ -96,3 +96,51 @@ def test_sources_page_renders(conn, monkeypatch):
     assert r.status_code == 200
     for needle in (b"Overlap matrix", b"greenhouse", b"adzuna", b"unconfigured"):
         assert needle in r.content, needle
+
+
+def seed_two_users(conn):
+    """Two applicants with their own matched postings."""
+    conn.execute("INSERT INTO applicants (name, profile_path, user_ref) "
+                 "VALUES ('joebuty','p','joebuty')")
+    conn.execute("INSERT INTO applicants (name, profile_path, user_ref) "
+                 "VALUES ('otheruser','p','otheruser')")
+    for i, (aid, title) in enumerate([(1, "Senior Data Engineer"),
+                                      (2, "Marketing Lead")], start=1):
+        pid, _ = upsert_posting(conn, PostingDTO(
+            company_name=f"Co{i}", source="ats", external_id=str(i), title=title,
+            location="London", apply_url=f"https://boards.greenhouse.io/co{i}/{i}",
+            description_text="d"))
+        conn.execute("INSERT INTO matches (posting_id, applicant_id, score, reasons_json,"
+                     " red_flags_json, extracted_questions_json, model, tokens_used,"
+                     " created_at) VALUES (?,?,8,'[]','[]','[]','m',1,datetime('now'))",
+                     (pid, aid))
+        conn.execute("INSERT INTO applications (posting_id, applicant_id, state,"
+                     " answers_json, created_at, updated_at) VALUES (?,?,'MATCHED','{}',"
+                     " datetime('now'),datetime('now'))", (pid, aid))
+    conn.commit()
+
+
+def test_public_all_view_scoped_to_user(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    seed_two_users(conn)
+    r = Client().get("/all/joebuty")
+    assert r.status_code == 200
+    html = r.content.decode()
+    assert "Senior Data Engineer" in html and "Co1" in html
+    # no leakage: other user's rows, names, and internal links are absent
+    assert "Marketing Lead" not in html and "Co2" not in html
+    assert "otheruser" not in html
+    assert "/app/" not in html                      # internal review links
+    assert 'href="/queue"' not in html              # internal nav hidden
+    assert "/job_matches/joebuty/" in html          # rows link to public detail
+
+
+def test_public_all_view_unknown_ref_404(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    assert Client().get("/all/nobody-here").status_code == 404
+
+
+def test_public_all_view_rejects_post(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    seed_two_users(conn)
+    assert Client().post("/all/joebuty").status_code == 405
