@@ -121,6 +121,9 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
     conn = connect()
     try:
+        if not settings.track_enabled:
+            log.info("outcome tracking disabled (TRACK_ENABLED=false); skipping")
+            return
         imap_user = settings.imap_user or settings.smtp_user
         imap_password = settings.imap_password or settings.smtp_password
         if not (imap_user and imap_password):

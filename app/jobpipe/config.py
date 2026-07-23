@@ -14,10 +14,15 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: str = ""
     notify_to: str = ""
+    # Branded From address (must be a verified sender on your SMTP provider).
+    # Blank = use smtp_user (correct for Gmail; wrong for Brevo-style relays
+    # whose smtp_user is a login, not an address).
+    mail_from: str = ""
     # IMAP (outcome tracking) may use a different account than SMTP (e.g. a
     # transactional sender like Brevo has no mailbox). Blank = reuse SMTP creds.
     imap_user: str = ""
     imap_password: str = ""
+    track_enabled: bool = True   # false = skip outcome tracking (no IMAP mailbox yet)
 
     db_path: str = "/app/data/jobpipe.db"
     profile_path: str = "profile.yaml"
