@@ -578,6 +578,16 @@ def _instant_mini_run(user_ref: str) -> None:
     threading.Thread(target=work, daemon=True, name=f"mini-run-{user_ref}").start()
 
 
+def _async(fn, *args) -> None:
+    """Run fn in a daemon thread. SMTP sends can take tens of seconds with
+    retries — they must NEVER sit on the signup request path (a hung response
+    reads as 'the button did nothing' and invites double-submits).
+    Tests monkeypatch this to run inline."""
+    import threading
+
+    threading.Thread(target=fn, args=args, daemon=True).start()
+
+
 def _notify_joe(subject: str, html_body: str) -> None:
     """Best-effort owner notification; never blocks or fails a signup."""
     try:
@@ -615,16 +625,21 @@ def _send_welcome(user_ref: str, email: str, activated: bool) -> None:
                 f"\"why it fits\"<br>"
                 f"<a href='{table}'>{table}</a> — the dense table view</p>"
                 f"<p>Bookmark one. This is the only email you'll get unless "
-                f"there's something worth telling you about your matches.</p>"),
+                f"there's something worth telling you about your matches.</p>"
+                f"<p><b>Want sharper matches?</b> Reply to this email with "
+                f"anything else worth knowing — a CV summary, key skills, "
+                f"salary expectations, deal-breakers — and it'll be added to "
+                f"your matching profile.</p>"),
             text_body=(f"You're in, {user_ref}!\n\nYour matches: {cards}\n"
                        f"Table view: {table}\n\nBookmark one."))
     except Exception:
         pass
 
 
-def _activate_or_flag(conn, user_ref: str) -> bool:
-    """Auto-activate a signup if under today's cap (returns True) or leave it
-    pending and flag it for Joe (returns False). Every signup emails Joe."""
+def _activate_or_flag(conn, user_ref: str) -> tuple[bool, int]:
+    """Auto-activate a signup if under today's cap, or leave it pending and
+    flag it. Returns (activated, activations_today). Emails are NOT sent here
+    — they happen off the request path via _signup_emails."""
     from ..config import settings as _settings
     from ..db import log_event
 
@@ -634,6 +649,18 @@ def _activate_or_flag(conn, user_ref: str) -> bool:
             log_event(conn, "signup_auto_activated", payload={"user_ref": user_ref})
         n_today = _auto_activations_today(conn)
         _instant_mini_run(user_ref)
+        return True, n_today
+    with tx(conn):
+        log_event(conn, "signup_capped", payload={"user_ref": user_ref})
+    return False, _auto_activations_today(conn)
+
+
+def _signup_emails(user_ref: str, email: str, activated: bool, n_today: int) -> None:
+    """All signup mail (Joe's alert + the user's welcome), run via _async so
+    the signup response returns instantly."""
+    from ..config import settings as _settings
+
+    if activated:
         _notify_joe(
             subject=f"[jobpipe] new signup: {user_ref} (auto-activated "
                     f"{n_today}/{_settings.signup_daily_cap} today)",
@@ -641,16 +668,14 @@ def _activate_or_flag(conn, user_ref: str) -> bool:
                       f"({n_today}/{_settings.signup_daily_cap} today). An instant "
                       f"mini match run is scoring their newest postings now; their "
                       f"page is /job_matches/{user_ref}.</p>")
-        return True
-    with tx(conn):
-        log_event(conn, "signup_capped", payload={"user_ref": user_ref})
-    _notify_joe(
-        subject=f"[jobpipe] new signup PENDING: {user_ref} — cap hit, approval needed",
-        html_body=f"<p><b>{user_ref}</b> signed up but today's auto-activation "
-                  f"cap ({_settings.signup_daily_cap}) was already reached. "
-                  f"They're pending — activate from the applicants page flag "
-                  f"or scripts/approve_user.py.</p>")
-    return False
+    else:
+        _notify_joe(
+            subject=f"[jobpipe] new signup PENDING: {user_ref} — cap hit, approval needed",
+            html_body=f"<p><b>{user_ref}</b> signed up but today's auto-activation "
+                      f"cap ({_settings.signup_daily_cap}) was already reached. "
+                      f"They're pending — activate from the applicants page flag "
+                      f"or scripts/approve_user.py.</p>")
+    _send_welcome(user_ref, email, activated)
 
 
 def onboard(request):
@@ -705,10 +730,10 @@ def onboard(request):
                     "INSERT INTO applicants (name, profile_path, profile_yaml,"
                     " user_ref, active) VALUES (?, '', ?, ?, 0)",
                     (prof.identity.full_name, yaml_override, user_ref))
-            activated = _activate_or_flag(conn, user_ref)
+            activated, n_today = _activate_or_flag(conn, user_ref)
         finally:
             conn.close()
-        _send_welcome(user_ref, prof.identity.email, activated)
+        _async(_signup_emails, user_ref, prof.identity.email, activated, n_today)
         return render(request, "onboard_done.html",
                       {"name": prof.identity.full_name, "user_ref": user_ref,
                        "activated": activated, "hide_internal_nav": True})
@@ -772,10 +797,10 @@ def onboard(request):
                 "INSERT INTO applicants (name, profile_path, profile_yaml,"
                 " user_ref, active) VALUES (?, '', ?, ?, 0)",
                 (data["identity"]["full_name"], yaml_text, user_ref))
-        activated = _activate_or_flag(conn, user_ref)
+        activated, n_today = _activate_or_flag(conn, user_ref)
     finally:
         conn.close()
-    _send_welcome(user_ref, data["identity"]["email"], activated)
+    _async(_signup_emails, user_ref, data["identity"]["email"], activated, n_today)
     return render(request, "onboard_done.html",
                   {"name": data["identity"]["full_name"], "user_ref": user_ref,
                    "activated": activated, "hide_internal_nav": True})

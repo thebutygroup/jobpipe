@@ -6,7 +6,12 @@
   {{ n_sources }} job sources around the clock, cut the duplicates, and score
   every posting against what <em>you</em> asked for — with the reasons shown.</p>
 
-  <form method="post" action="/onboard" class="quickstart card">{% csrf_token %}
+  <script>
+function qsSubmit(form){var b=form.querySelector('button[type=submit]');
+if(form.dataset.busy)return false;form.dataset.busy=1;
+b.disabled=true;b.textContent='Creating your page…';return true;}
+</script>
+  <form method="post" action="/onboard" class="quickstart card" onsubmit="return qsSubmit(this)">{% csrf_token %}
     <label class="meta" for="qs-name">Pick a user name — it becomes your private page address</label>
     <input id="qs-name" name="full_name" required maxlength="30" pattern="[A-Za-z0-9_-]{1,30}"
            placeholder="e.g. maya" value="{{ form.full_name }}">

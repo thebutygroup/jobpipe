@@ -193,6 +193,7 @@ def test_signup_daily_cap_flags_for_joe(conn, monkeypatch):
     _point_db(monkeypatch, conn)
     from jobpipe.config import settings
     from jobpipe.dashboard import views as v
+    monkeypatch.setattr(v, "_async", lambda fn, *a: fn(*a))
     monkeypatch.setattr(settings, "signup_daily_cap", 2)
     monkeypatch.setattr(v, "_instant_mini_run", lambda ref: None)
     emails = []
@@ -218,6 +219,7 @@ def test_every_signup_notifies_joe(conn, monkeypatch):
     _point_db(monkeypatch, conn)
     from jobpipe.config import settings
     from jobpipe.dashboard import views as v
+    monkeypatch.setattr(v, "_async", lambda fn, *a: fn(*a))
     monkeypatch.setattr(settings, "signup_daily_cap", 1)
     monkeypatch.setattr(v, "_instant_mini_run", lambda ref: None)
     emails = []
@@ -234,6 +236,7 @@ def test_every_signup_notifies_joe(conn, monkeypatch):
 def test_signup_with_email_gets_welcome(conn, monkeypatch):
     _point_db(monkeypatch, conn)
     from jobpipe.dashboard import views as v
+    monkeypatch.setattr(v, "_async", lambda fn, *a: fn(*a))
     monkeypatch.setattr(v, "_instant_mini_run", lambda ref: None)
     sent = []
     import jobpipe.notify as notify
@@ -252,6 +255,7 @@ def test_signup_with_email_gets_welcome(conn, monkeypatch):
 def test_signup_without_email_sends_no_welcome(conn, monkeypatch):
     _point_db(monkeypatch, conn)
     from jobpipe.dashboard import views as v
+    monkeypatch.setattr(v, "_async", lambda fn, *a: fn(*a))
     monkeypatch.setattr(v, "_instant_mini_run", lambda ref: None)
     sent = []
     import jobpipe.notify as notify
@@ -260,3 +264,42 @@ def test_signup_without_email_sends_no_welcome(conn, monkeypatch):
     _signup(Client(), "quiet")
     assert not any(e.get("to") for e in sent)      # no user-facing mail
     assert any("new signup: quiet" in e["subject"] for e in sent)  # Joe still told
+
+
+def test_signup_response_is_instant_even_if_smtp_hangs(conn, monkeypatch):
+    """Regression: emails used to send synchronously in the request — a slow
+    SMTP server made 'Start matching me' look dead (live, 23 Jul)."""
+    _point_db(monkeypatch, conn)
+    from jobpipe.dashboard import views as v
+    monkeypatch.setattr(v, "_instant_mini_run", lambda ref: None)
+    spawned = []
+    monkeypatch.setattr(v, "_async", lambda fn, *a: spawned.append(fn.__name__))
+
+    def hang(**kw):
+        raise AssertionError("send_email must not run on the request path")
+
+    import jobpipe.notify as notify
+    monkeypatch.setattr(notify, "send_email", hang)
+    r = _signup(Client(), "instant", email="x@y.com")
+    assert r.status_code == 200 and b"instant" in r.content
+    assert spawned == ["_signup_emails"]  # dispatched async, not executed inline
+
+
+def test_welcome_email_invites_more_detail(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    from jobpipe.dashboard import views as v
+    monkeypatch.setattr(v, "_instant_mini_run", lambda ref: None)
+    monkeypatch.setattr(v, "_async", lambda fn, *a: fn(*a))
+    sent = []
+    import jobpipe.notify as notify
+    monkeypatch.setattr(notify, "send_email", lambda **kw: sent.append(kw) or True)
+    _signup(Client(), "maya2", email="maya@example.com")
+    welcome = [e for e in sent if e.get("to")][0]
+    assert "Reply to this email" in welcome["html_body"]
+
+
+def test_landing_and_onboard_have_submit_feedback(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    for path in ("/", "/onboard"):
+        html = Client().get(path).content.decode()
+        assert "qsSubmit" in html and "Creating your page" in html, path
