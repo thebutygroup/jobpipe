@@ -8,6 +8,7 @@ urlpatterns = [
     path("all", views.all_postings, name="all"),
     path("app/<int:app_id>", views.app_detail, name="app_detail"),
     path("stats", views.stats, name="stats"),
+    path("sources", views.sources, name="sources"),
     path("applicants", views.applicants_index, name="applicants"),
     path("onboard", views.onboard, name="onboard"),
     path("go", views.go_to_matches, name="go"),

@@ -409,6 +409,33 @@ def outcome_link(request, outcome_id: int):
 
 
 @require_GET
+def sources(request):
+    """Which sources are worth having? Uniqueness, overlap, freshness and
+    match quality per source, plus operational health. Private."""
+    from .. import source_analytics
+    from ..sources import registry
+
+    conn = connect()
+    try:
+        overlap = source_analytics.overlap_matrix(conn)
+        volume = source_analytics.volume_by_day(conn)
+        ctx = {
+            "health": registry.health(conn),
+            "summary": source_analytics.source_summary(conn),
+            "overlap_sources": overlap["sources"],
+            "overlap_rows": [
+                {"source": a, "total": overlap["totals"][a],
+                 "cells": [overlap["rows"][a][b] for b in overlap["sources"]]}
+                for a in overlap["sources"]],
+            "volume_days": [d[5:] for d in volume["days"]],   # MM-DD
+            "volume_rows": sorted(volume["series"].items()),
+        }
+    finally:
+        conn.close()
+    return render(request, "sources.html", ctx)
+
+
+@require_GET
 def applicants_index(request):
     """The map: every applicant, their pipeline counts, links to their
     matches page and per-applicant stats."""

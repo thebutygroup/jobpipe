@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Sources</h1>
+<p class="meta" style="max-width:640px">Which sources are worth having? A "job"
+is one canonical posting; sightings from multiple sources are deduplicated at
+ingest, so <em>unique</em> means no other source ever surfaced that job.</p>
+
+<div class="card">
+  <h2>Health</h2>
+  <table class="tbl">
+    <thead><tr><th>source</th><th>kind</th><th>status</th><th>last polled (UTC)</th>
+      <th>new jobs</th><th>errors</th></tr></thead>
+    <tbody>
+    {% for h in health %}
+      <tr>
+        <td data-l="source"><strong>{{ h.source }}</strong></td>
+        <td data-l="kind">{{ h.kind }}</td>
+        <td data-l="status">
+          {% if h.status == "ok" %}<span class="good">✓ ok</span>
+          {% elif h.status == "unconfigured" %}<span class="flag">unconfigured</span>
+            <div class="meta">{{ h.reason }}</div>
+          {% else %}<span class="meta">{{ h.status }}</span>{% endif %}
+        </td>
+        <td data-l="last polled">{{ h.last_polled|default:"—" }}</td>
+        <td data-l="new">{{ h.total_new }}</td>
+        <td data-l="errors">{{ h.total_errors }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Uniqueness &amp; quality</h2>
+  {% if summary %}
+  <table class="tbl">
+    <thead><tr><th>source</th><th>jobs</th><th>unique</th><th>duplicate</th>
+      <th>saw it first</th><th>matches</th><th>avg score</th><th>score ≥ 7</th></tr></thead>
+    <tbody>
+    {% for s in summary %}
+      <tr>
+        <td data-l="source"><strong>{{ s.source }}</strong></td>
+        <td data-l="jobs">{{ s.jobs }}</td>
+        <td data-l="unique">{{ s.unique }} <span class="meta">({{ s.uniqueness_pct }}%)</span></td>
+        <td data-l="duplicate"><span class="meta">{{ s.duplicate_pct }}%</span></td>
+        <td data-l="first">{{ s.first_seen_wins }}</td>
+        <td data-l="matches">{{ s.matches }}</td>
+        <td data-l="avg">{{ s.avg_score|default_if_none:"—" }}</td>
+        <td data-l="strong">{{ s.strong_matches }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="meta">"saw it first" counts only jobs seen by 2+ sources, where this
+  source's first sighting strictly preceded all others.</p>
+  {% else %}<div class="empty">No sightings recorded yet — run a poll.</div>{% endif %}
+</div>
+
+<div class="card">
+  <h2>Overlap matrix</h2>
+  {% if overlap_sources %}
+  <p class="meta">Row A, column B: % of A's jobs that B also surfaced. Asymmetric
+  by design — a broad source can cover a niche one without the reverse.</p>
+  <table class="tbl">
+    <thead><tr><th>of ↓ / also in →</th>
+      {% for s in overlap_sources %}<th>{{ s }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for row in overlap_rows %}
+      <tr><td><strong>{{ row.source }}</strong> <span class="meta">({{ row.total }})</span></td>
+        {% for pct in row.cells %}
+          <td>{% if pct is None %}<span class="meta">·</span>{% else %}{{ pct }}%{% endif %}</td>
+        {% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="empty">Nothing to compare yet.</div>{% endif %}
+</div>
+
+<div class="card">
+  <h2>Volume — new sightings per day (last 30 days)</h2>
+  {% if volume_days %}
+  <table class="tbl">
+    <thead><tr><th>source</th>{% for d in volume_days %}<th class="meta">{{ d }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for source, counts in volume_rows %}
+      <tr><td><strong>{{ source }}</strong></td>
+        {% for n in counts %}<td>{% if n %}{{ n }}{% else %}<span class="meta">·</span>{% endif %}</td>{% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="empty">No sightings in the last 30 days.</div>{% endif %}
+</div>
+{% endblock %}

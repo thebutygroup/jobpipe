@@ -78,3 +78,21 @@ def test_approve_succeeds_when_complete(conn, monkeypatch):
     state = conn.execute("SELECT state FROM applications WHERE id=?",
                          (app_id,)).fetchone()["state"]
     assert state == "APPROVED"
+
+
+def test_sources_page_renders(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    # one deduped job seen by two sources
+    pid, _ = upsert_posting(conn, PostingDTO(
+        company_name="Sunny Days Nursery", source="ats", source_detail="greenhouse",
+        external_id="1", title="Trainee Preschooler", location="London",
+        apply_url="https://boards.greenhouse.io/sunny/1"))
+    upsert_posting(conn, PostingDTO(
+        company_name="Sunny Days Nursery Ltd", source="adzuna", external_id="9",
+        title="Trainee Pre-Schooler", location="London",
+        apply_url="https://adzuna.co.uk/land/ad/9", source_detail="adzuna"))
+    conn.commit()
+    r = Client().get("/sources")
+    assert r.status_code == 200
+    for needle in (b"Overlap matrix", b"greenhouse", b"adzuna", b"unconfigured"):
+        assert needle in r.content, needle
