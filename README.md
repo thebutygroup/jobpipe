@@ -62,7 +62,10 @@ log line, `unconfigured` on `/sources`) — nothing breaks while keys are pendin
 4. `docker compose build && docker compose up -d`
 5. First runs: `python -m jobpipe.pollers.runner`, then `python -m
    jobpipe.matching.matcher` (see FIXES-*.md for operational sequences).
-6. No API keys yet? `python scripts/demo_ingest.py` loads the toy fixture
+6. Keys in hand? `python scripts/record_fixtures.py` verifies them with one
+   live call each and records real responses into `tests/fixtures/*_live.json`
+   (commit them — CI then validates against real payload shapes).
+   No API keys yet? `python scripts/demo_ingest.py` loads the toy fixture
    payloads through the full adapter + dedupe path so `/sources` and the
    dashboards have data to show.
 

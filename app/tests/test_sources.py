@@ -141,3 +141,35 @@ def test_ats_adapters_tag_provenance(name):
     _ = (greenhouse, lever, ashby, workable)
     dto = registry.get(name).normalize(raws[name], SearchSpec(source=name, company_name="Acme"))
     assert dto.source == "ats" and dto.source_detail == name
+
+
+# ---- live-recorded fixtures (created by scripts/record_fixtures.py) ------------------
+# Skipped until the recordings exist; once committed, CI validates normalization
+# against REAL payload shapes, not just the hand-written toys.
+
+ADZUNA_LIVE = FIXTURES / "adzuna_search_live.json"
+REED_LIVE = FIXTURES / "reed_search_live.json"
+
+
+@pytest.mark.skipif(not ADZUNA_LIVE.exists(), reason="no live adzuna recording yet")
+def test_adzuna_live_fixture_normalizes():
+    a = registry.get("adzuna")
+    raws = json.loads(ADZUNA_LIVE.read_text())["results"]
+    assert raws
+    for raw in raws:
+        d = a.normalize(raw, SPEC)
+        assert d.title and d.company_name and d.external_id and d.apply_url
+        assert d.source == "adzuna"
+        assert "salary_normalised" in d.raw
+
+
+@pytest.mark.skipif(not REED_LIVE.exists(), reason="no live reed recording yet")
+def test_reed_live_fixture_normalizes():
+    a = registry.get("reed")
+    raws = json.loads(REED_LIVE.read_text())["results"]
+    assert raws
+    for raw in raws:
+        d = a.normalize(raw, SPEC)
+        assert d.title and d.company_name and d.external_id and d.apply_url
+        assert d.source == "reed"
+        assert "salary_normalised" in d.raw
