@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS companies (
 CREATE TABLE IF NOT EXISTS postings (
     id INTEGER PRIMARY KEY,
     company_id INTEGER REFERENCES companies(id),
-    source TEXT NOT NULL CHECK (source IN ('ats','builtin','manual')),
+    source TEXT NOT NULL,               -- validated against the source registry in code
+
     external_id TEXT,
     title TEXT NOT NULL,
     location TEXT,
@@ -121,9 +122,56 @@ CREATE TABLE IF NOT EXISTS index_companies (
     workday_host TEXT, workday_tenant TEXT, workday_site TEXT,
     last_checked TEXT, notes TEXT
 );
+CREATE TABLE IF NOT EXISTS source_postings (
+    id INTEGER PRIMARY KEY,
+    posting_id INTEGER NOT NULL REFERENCES postings(id),
+    source TEXT NOT NULL,               -- specific adapter: greenhouse|lever|adzuna|...
+    external_id TEXT,
+    url TEXT,
+    first_seen_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    raw_json TEXT
+);
 CREATE INDEX IF NOT EXISTS idx_postings_hash ON postings(content_hash);
 CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at);
+CREATE INDEX IF NOT EXISTS idx_sp_posting ON source_postings(posting_id);
+CREATE INDEX IF NOT EXISTS idx_sp_source_ext ON source_postings(source, external_id);
 """
+
+
+def _migrate_postings_source_check(conn) -> None:
+    """Pre-multi-source DBs constrain postings.source with a CHECK
+    ('ats','builtin','manual'), which rejects new sources. SQLite cannot drop
+    a CHECK in place, so rebuild the table once (SQLite ALTER TABLE recipe:
+    FK off -> new table -> copy -> drop -> rename -> FK check)."""
+    row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' "
+                       "AND name='postings'").fetchone()
+    if not row or "CHECK (source IN" not in (row["sql"] or ""):
+        return
+    conn.execute("PRAGMA foreign_keys=OFF")
+    try:
+        cols = [r["name"] for r in conn.execute("PRAGMA table_info(postings)")]
+        col_list = ", ".join(cols)
+        new_sql = row["sql"].replace(
+            "source TEXT NOT NULL CHECK (source IN ('ats','builtin','manual'))",
+            "source TEXT NOT NULL").replace(
+            "CREATE TABLE postings", "CREATE TABLE postings_new")
+        if "postings_new" not in new_sql or "CHECK (source IN" in new_sql:
+            raise RuntimeError("postings CHECK migration: unexpected table SQL; "
+                               "refusing to guess")
+        conn.executescript(f"""
+            {new_sql};
+            INSERT INTO postings_new ({col_list}) SELECT {col_list} FROM postings;
+            DROP TABLE postings;
+            ALTER TABLE postings_new RENAME TO postings;
+            CREATE INDEX IF NOT EXISTS idx_postings_hash ON postings(content_hash);
+        """)
+        bad = conn.execute("PRAGMA foreign_key_check").fetchall()
+        if bad:
+            raise RuntimeError(f"postings CHECK migration broke FKs: {bad[:3]}")
+        conn.commit()
+    finally:
+        conn.execute("PRAGMA foreign_keys=ON")
 
 
 def _backfill_user_refs(conn) -> None:
@@ -149,7 +197,8 @@ def connect(db_path: str | None = None) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)
-    # idempotent migration for pre-existing DBs
+    # idempotent migrations for pre-existing DBs
+    _migrate_postings_source_check(conn)
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(companies)")}
     if "last_polled_at" not in cols:
         conn.execute("ALTER TABLE companies ADD COLUMN last_polled_at TEXT")
@@ -205,13 +254,45 @@ def get_or_create_company(conn, name: str, ats: str = "custom", **kw) -> int:
     return cur.lastrowid
 
 
+def record_provenance(conn, posting_id: int, dto: PostingDTO) -> None:
+    """Upsert this sighting into source_postings: which source saw this job,
+    under what ID/URL, first/last seen. Idempotent per (source, external_id)."""
+    src = dto.source_detail or dto.source
+    ts = now()
+    if dto.external_id:
+        row = conn.execute("SELECT id FROM source_postings WHERE source = ? "
+                           "AND external_id = ?", (src, dto.external_id)).fetchone()
+    else:
+        row = conn.execute("SELECT id FROM source_postings WHERE source = ? "
+                           "AND posting_id = ? AND url = ?",
+                           (src, posting_id, dto.apply_url)).fetchone()
+    if row:
+        conn.execute("UPDATE source_postings SET last_seen_at = ? WHERE id = ?",
+                     (ts, row["id"]))
+        return
+    conn.execute(
+        "INSERT INTO source_postings (posting_id, source, external_id, url,"
+        " first_seen_at, last_seen_at, raw_json) VALUES (?,?,?,?,?,?,?)",
+        (posting_id, src, dto.external_id, dto.apply_url, ts, ts,
+         json.dumps(dto.raw)[:20000]))
+
+
 def upsert_posting(conn, dto: PostingDTO, company_id: int | None = None) -> tuple[int, bool]:
     """Insert or refresh a posting. Returns (posting_id, is_new).
 
-    Cross-channel dedup: keyed on identity_key. An existing row is refreshed
-    (last_seen_at, and description/hash if changed) rather than duplicated —
-    regardless of which source saw it this time.
+    Identity resolution, in order:
+      1. exact identity_key (canonical apply URL) hit -> refresh
+      2. dedupe.find_canonical: same company + same/fuzzy title + compatible
+         location -> attach this sighting to the existing canonical posting
+         (and promote it in place if this source is preferred, e.g. ATS over
+         an aggregator)
+      3. otherwise insert a new canonical posting
+    Every path records provenance in source_postings, so re-running a poll
+    never duplicates rows and source analytics can always answer "who saw
+    this job, and when".
     """
+    from . import dedupe
+
     key = identity_key(dto)
     ts = now()
     existing = conn.execute("SELECT id, content_hash FROM postings WHERE identity_key = ?", (key,)).fetchone()
@@ -221,7 +302,32 @@ def upsert_posting(conn, dto: PostingDTO, company_id: int | None = None) -> tupl
             "description_text = ?, content_hash = ? WHERE id = ?",
             (ts, dto.description_text, dto.hash, existing["id"]),
         )
+        record_provenance(conn, existing["id"], dto)
         return existing["id"], False
+
+    canonical_id, explanation = dedupe.find_canonical(conn, dto)
+    if canonical_id is not None:
+        canonical = conn.execute("SELECT id, source, description_text FROM postings "
+                                 "WHERE id = ?", (canonical_id,)).fetchone()
+        conn.execute("UPDATE postings SET last_seen_at = ?, closed_at = NULL WHERE id = ?",
+                     (ts, canonical_id))
+        # Longer description wins (aggregators carry snippets, ATS the full text).
+        if len(dto.description_text or "") > len(canonical["description_text"] or ""):
+            conn.execute("UPDATE postings SET description_text = ?, content_hash = ? "
+                         "WHERE id = ?", (dto.description_text, dto.hash, canonical_id))
+        # Preferred source arriving later promotes the canonical record in place.
+        if dedupe.source_rank(dto.source) < dedupe.source_rank(canonical["source"]):
+            conn.execute(
+                "UPDATE postings SET source = ?, apply_url = ?, canonical_apply_url = ?, "
+                "identity_key = ?, external_id = ? WHERE id = ?",
+                (dto.source, dto.apply_url, dto.canonical_apply_url, key,
+                 dto.external_id, canonical_id))
+            explanation["promoted_to"] = dto.source
+        record_provenance(conn, canonical_id, dto)
+        log_event(conn, event_type="dedupe_linked", posting_id=canonical_id,
+                  payload=explanation)
+        return canonical_id, False
+
     if company_id is None:
         company_id = get_or_create_company(conn, dto.company_name)
     cur = conn.execute(
@@ -234,8 +340,9 @@ def upsert_posting(conn, dto: PostingDTO, company_id: int | None = None) -> tupl
          dto.hash, ts, ts, json.dumps(dto.raw)[:20000]),
     )
     pid = cur.lastrowid
+    record_provenance(conn, pid, dto)
     log_event(conn, event_type="posting_discovered", posting_id=pid,
-              payload={"source": dto.source, "title": dto.title})
+              payload={"source": dto.source_detail or dto.source, "title": dto.title})
     return pid, True
 
 

@@ -12,9 +12,12 @@ from .base import polite_get, strip_html
 API = "https://apply.workable.com/api/v1/widget/accounts/{token}?details=true"
 
 
+def fetch_raw(board_token: str) -> list[dict]:
+    return polite_get(API.format(token=board_token)).json().get("jobs", [])
+
+
 def fetch(company_name: str, board_token: str) -> list[PostingDTO]:
-    data = polite_get(API.format(token=board_token)).json()
-    return [normalise(company_name, j) for j in data.get("jobs", [])]
+    return [normalise(company_name, j) for j in fetch_raw(board_token)]
 
 
 def normalise(company_name: str, job: dict) -> PostingDTO:

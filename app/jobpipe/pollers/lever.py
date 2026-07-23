@@ -11,9 +11,12 @@ from .base import polite_get, strip_html
 API = "https://api.lever.co/v0/postings/{token}?mode=json"
 
 
+def fetch_raw(board_token: str) -> list[dict]:
+    return polite_get(API.format(token=board_token)).json()
+
+
 def fetch(company_name: str, board_token: str) -> list[PostingDTO]:
-    data = polite_get(API.format(token=board_token)).json()
-    return [normalise(company_name, j) for j in data]
+    return [normalise(company_name, j) for j in fetch_raw(board_token)]
 
 
 def normalise(company_name: str, job: dict) -> PostingDTO:

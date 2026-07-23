@@ -81,6 +81,10 @@ class PostingDTO:
     apply_url: str = ""
     description_text: str = ""
     raw: dict = field(default_factory=dict)
+    # Provenance tag: the specific adapter that saw this posting (greenhouse,
+    # lever, adzuna, ...). `source` stays the coarse channel ('ats', 'builtin',
+    # 'adzuna', ...) used by postings.source; source_detail feeds source_postings.
+    source_detail: str = ""
 
     @property
     def canonical_apply_url(self) -> str:
