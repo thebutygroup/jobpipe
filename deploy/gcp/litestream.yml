@@ -1,0 +1,12 @@
+# Litestream: continuous SQLite -> GCS replication (point-in-time restore).
+# The VM's attached service account needs Storage Object Admin on the bucket;
+# Litestream picks up credentials from the VM metadata automatically.
+# Restore drill:  litestream restore -config /etc/litestream.yml /data/jobpipe.db
+dbs:
+  - path: /data/jobpipe.db
+    replicas:
+      - type: gcs
+        bucket: jobpipe-backups        # change to your bucket name
+        path: jobpipe-db
+        retention: 720h                # 30 days of point-in-time history
+        snapshot-interval: 24h
