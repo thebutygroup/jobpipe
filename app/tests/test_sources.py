@@ -173,3 +173,27 @@ def test_reed_live_fixture_normalizes():
         assert d.title and d.company_name and d.external_id and d.apply_url
         assert d.source == "reed"
         assert "salary_normalised" in d.raw
+
+
+def test_runner_main_crosslinks_before_closing(conn, monkeypatch, tmp_path):
+    """Regression: crosslink used to run AFTER conn.close() in main(),
+    crashing every poll at the finish line (seen live 23 Jul)."""
+    db_path = tmp_path / "main.db"
+    monkeypatch.setattr(settings, "db_path", str(db_path))
+    monkeypatch.setattr(runner, "sync_registry", lambda c, p: None)
+    monkeypatch.setattr(runner, "load_searches", lambda p: [])
+    monkeypatch.setattr(runner, "run_ats_pollers", lambda c: {})
+    monkeypatch.setattr(runner, "run_builtin_poller", lambda c, s: {"postings": 0,
+                                                                    "new": 0, "errors": 0})
+    monkeypatch.setattr(runner, "run_aggregator_pollers", lambda c, s: {})
+    probe = {}
+
+    def probing_crosslink(c):
+        c.execute("SELECT 1")  # raises ProgrammingError if conn already closed
+        probe["ran"] = True
+        return 0
+
+    import jobpipe.pollers.crosslink as crosslink_mod
+    monkeypatch.setattr(crosslink_mod, "link_cross_source", probing_crosslink)
+    runner.main()
+    assert probe.get("ran") is True

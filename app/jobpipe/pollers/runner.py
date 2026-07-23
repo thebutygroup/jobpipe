@@ -264,20 +264,22 @@ def main() -> None:
         bi_stats = run_builtin_poller(conn, searches)
         agg_stats = run_aggregator_pollers(conn, searches)
         closed = close_stale(conn)
+        from . import crosslink
+        linked = crosslink.link_cross_source(conn)
         with tx(conn):
             log_event(conn, "poll_run", payload={"ats": ats_stats, "builtin": bi_stats,
-                                                 "aggregators": agg_stats, "closed": closed})
+                                                 "aggregators": agg_stats, "closed": closed,
+                                                 "crosslinked": linked})
         heartbeat(conn, "poll", ok=True,
-                  detail=f"ats={ats_stats} builtin={bi_stats} agg={agg_stats} closed={closed}")
-        log.info("poll complete: ats=%s builtin=%s agg=%s closed=%d",
-                 ats_stats, bi_stats, agg_stats, closed)
+                  detail=f"ats={ats_stats} builtin={bi_stats} agg={agg_stats} "
+                         f"closed={closed} crosslinked={linked}")
+        log.info("poll complete: ats=%s builtin=%s agg=%s closed=%d crosslinked=%d",
+                 ats_stats, bi_stats, agg_stats, closed, linked)
     except Exception as e:
         heartbeat(conn, "poll", ok=False, detail=str(e))
         raise
     finally:
         conn.close()
-    from . import crosslink
-    crosslink.link_cross_source(conn)
 
 
 
