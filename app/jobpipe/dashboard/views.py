@@ -587,6 +587,41 @@ def _notify_joe(subject: str, html_body: str) -> None:
         pass
 
 
+def _send_welcome(user_ref: str, email: str, activated: bool) -> None:
+    """Best-effort signup confirmation to the new user (only if they gave an
+    email). Never blocks or fails a signup."""
+    if not (email or "").strip():
+        return
+    from ..config import settings as _settings
+    base = (_settings.dashboard_base_url or "").rstrip("/")
+    cards = f"{base}/job_matches/{user_ref}"
+    table = f"{base}/all/{user_ref}"
+    if activated:
+        status = ("<p>Matching has started — your first scored matches usually "
+                  "appear within the hour, and new jobs are matched to you "
+                  "twice a day.</p>")
+    else:
+        status = ("<p>Your profile is saved and queued — matching starts after "
+                  "a quick human review, usually within a day.</p>")
+    try:
+        from .. import notify
+        notify.send_email(
+            to=email.strip(),
+            subject="Welcome to jobpipe — here's your matches page",
+            html_body=(
+                f"<p>You're in, <b>{user_ref}</b> 🌱</p>{status}"
+                f"<p>Your matches live here (yours alone, no login needed):</p>"
+                f"<p><a href='{cards}'>{cards}</a> — cards with the full "
+                f"\"why it fits\"<br>"
+                f"<a href='{table}'>{table}</a> — the dense table view</p>"
+                f"<p>Bookmark one. This is the only email you'll get unless "
+                f"there's something worth telling you about your matches.</p>"),
+            text_body=(f"You're in, {user_ref}!\n\nYour matches: {cards}\n"
+                       f"Table view: {table}\n\nBookmark one."))
+    except Exception:
+        pass
+
+
 def _activate_or_flag(conn, user_ref: str) -> bool:
     """Auto-activate a signup if under today's cap (returns True) or leave it
     pending and flag it for Joe (returns False). Every signup emails Joe."""
@@ -673,6 +708,7 @@ def onboard(request):
             activated = _activate_or_flag(conn, user_ref)
         finally:
             conn.close()
+        _send_welcome(user_ref, prof.identity.email, activated)
         return render(request, "onboard_done.html",
                       {"name": prof.identity.full_name, "user_ref": user_ref,
                        "activated": activated, "hide_internal_nav": True})
@@ -739,6 +775,7 @@ def onboard(request):
         activated = _activate_or_flag(conn, user_ref)
     finally:
         conn.close()
+    _send_welcome(user_ref, data["identity"]["email"], activated)
     return render(request, "onboard_done.html",
                   {"name": data["identity"]["full_name"], "user_ref": user_ref,
                    "activated": activated, "hide_internal_nav": True})

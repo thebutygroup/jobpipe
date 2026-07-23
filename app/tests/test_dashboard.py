@@ -229,3 +229,34 @@ def test_every_signup_notifies_joe(conn, monkeypatch):
     assert len(emails) == 2
     assert "new signup: first" in emails[0]["subject"] and "1/1" in emails[0]["subject"]
     assert "PENDING: second" in emails[1]["subject"]
+
+
+def test_signup_with_email_gets_welcome(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    from jobpipe.dashboard import views as v
+    monkeypatch.setattr(v, "_instant_mini_run", lambda ref: None)
+    sent = []
+    import jobpipe.notify as notify
+    monkeypatch.setattr(notify, "send_email",
+                        lambda **kw: sent.append(kw) or True)
+    _signup(Client(), "maya", email="maya@example.com")
+    welcome = [e for e in sent if e.get("to") == "maya@example.com"]
+    assert len(welcome) == 1
+    assert "Welcome" in welcome[0]["subject"]
+    assert "/job_matches/maya" in welcome[0]["html_body"]
+    assert "/all/maya" in welcome[0]["html_body"]
+    # Joe's alert still went out separately (no explicit to -> NOTIFY_TO)
+    assert any("new signup: maya" in e["subject"] and not e.get("to") for e in sent)
+
+
+def test_signup_without_email_sends_no_welcome(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    from jobpipe.dashboard import views as v
+    monkeypatch.setattr(v, "_instant_mini_run", lambda ref: None)
+    sent = []
+    import jobpipe.notify as notify
+    monkeypatch.setattr(notify, "send_email",
+                        lambda **kw: sent.append(kw) or True)
+    _signup(Client(), "quiet")
+    assert not any(e.get("to") for e in sent)      # no user-facing mail
+    assert any("new signup: quiet" in e["subject"] for e in sent)  # Joe still told
