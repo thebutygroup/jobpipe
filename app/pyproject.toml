@@ -9,6 +9,7 @@ dependencies = [
     "pydantic>=2.5",
     "pydantic-settings>=2.1",
     "PyYAML>=6.0",
+    "rapidfuzz>=3.6",
     "anthropic>=0.40",
     "APScheduler>=3.10",
     "gunicorn>=22.0",

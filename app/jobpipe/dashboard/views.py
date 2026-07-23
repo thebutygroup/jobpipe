@@ -103,7 +103,15 @@ def _latest_outcomes(app_ids: list[int]) -> dict[int, str]:
 def landing(request):
     """Public front door: what this is, how to onboard, what to expect,
     how to read your matches. No job data, no internal links."""
-    return render(request, "landing.html", {"hide_internal_nav": True})
+    from ..sources import registry
+
+    display = {"greenhouse": "Greenhouse", "lever": "Lever", "ashby": "Ashby",
+               "workable": "Workable", "builtin": "Built In", "adzuna": "Adzuna",
+               "reed": "Reed"}
+    names = [display.get(n, n.title()) for n in registry.all_sources()]
+    return render(request, "landing.html",
+                  {"hide_internal_nav": True, "source_names": names,
+                   "n_sources": len(names)})
 
 
 @require_GET

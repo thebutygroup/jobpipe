@@ -12,7 +12,7 @@ without keys"). Nothing raises just because a key is missing.
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+from abc import ABC
 from dataclasses import dataclass, field
 
 from ..models import PostingDTO
