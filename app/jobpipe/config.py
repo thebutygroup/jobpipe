@@ -9,11 +9,15 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     anthropic_api_key: str = ""
-    smtp_host: str = "smtp.zoho.eu"
+    smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 465
     smtp_user: str = ""
     smtp_password: str = ""
     notify_to: str = ""
+    # IMAP (outcome tracking) may use a different account than SMTP (e.g. a
+    # transactional sender like Brevo has no mailbox). Blank = reuse SMTP creds.
+    imap_user: str = ""
+    imap_password: str = ""
 
     db_path: str = "/app/data/jobpipe.db"
     profile_path: str = "profile.yaml"
@@ -28,7 +32,7 @@ class Settings(BaseSettings):
     captcha_resolver: str = "human"          # human | service
     twocaptcha_api_key: str = ""
     dashboard_base_url: str = "http://localhost:8010"
-    imap_host: str = "imap.zoho.eu"          # confirmation tracking, same creds as SMTP
+    imap_host: str = "imap.gmail.com"        # confirmation tracking mailbox
     imap_port: int = 993
     freetext_model: str = "claude-sonnet-4-6"  # prose quality matters more than triage
 
