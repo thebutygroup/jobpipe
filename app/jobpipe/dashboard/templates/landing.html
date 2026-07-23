@@ -1,53 +1,66 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>jobpipe</h1>
-<p style="font-size:17px;max-width:560px;margin:6px 0 2px"><strong>Describe the
-job you want — matching jobs find you.</strong></p>
-<p class="meta" style="font-size:15px;max-width:560px">Job search, inverted.
-jobpipe continuously ingests postings from <strong>{{ n_sources }} sources</strong>
-— {{ source_names|join:", " }} — deduplicates them into one clean feed, scores
-every posting against what <em>you</em> said you want, and gives you a private
-page of ranked matches with the reasoning shown, not just a number.</p>
+<div class="hero">
+  <h1>Stop searching.<br>Let the right jobs find you.</h1>
+  <p class="lede">Tell us the job you want in one line. We watch
+  {{ n_sources }} job sources around the clock, cut the duplicates, and score
+  every posting against what <em>you</em> asked for — with the reasons shown.</p>
 
-<div class="card">
-  <h2>1 · Sign up</h2>
-  <p class="meta">Fill in one form: the job titles you want, and — most
-  importantly — a few sentences on what you're actually looking for. That free
-  text is what drives the matching, so the more specific, the better the
-  matches. A minimum salary is optional and only ever used to flag jobs above
-  or below your expectations; it's never displayed.</p>
-  <p><a href="/onboard"><strong>→ Create your profile</strong></a></p>
+  <form method="post" action="/onboard" class="quickstart card">{% csrf_token %}
+    <label class="meta" for="qs-name">Pick a user name — it becomes your private page address</label>
+    <input id="qs-name" name="full_name" required maxlength="30" pattern="[A-Za-z0-9_-]{1,30}"
+           placeholder="e.g. maya" value="{{ form.full_name }}">
+    <label class="meta" for="qs-title">The job title you want</label>
+    <input id="qs-title" name="target_titles" required placeholder="e.g. Senior Data Engineer"
+           value="{{ form.target_titles }}">
+    <label class="meta" for="qs-pos">One sentence on what you're looking for</label>
+    <textarea id="qs-pos" name="positioning" rows="2" required
+      placeholder="e.g. Hands-on data platform work at a company that ships, hybrid in London">{{ form.positioning }}</textarea>
+    <label class="meta" for="qs-email">Email — optional, only to tell you about new matches</label>
+    <input id="qs-email" name="email" type="email" placeholder="you@example.com" value="{{ form.email }}">
+    <p style="text-align:center;margin-top:6px">
+      <button type="submit">Start matching me</button>
+    </p>
+    <p class="meta" style="text-align:center">That's genuinely all we need.
+    Want sharper matches? <a href="/onboard" style="white-space:nowrap">Add more detail →</a></p>
+  </form>
+
+  <div class="pills">
+    {% for s in source_names %}<span class="pill">{{ s }}</span>{% endfor %}
+  </div>
+</div>
+
+<div class="steps">
+  <div class="card">
+    <h2>1 · Say what you want</h2>
+    <p class="meta">A title and a sentence is enough to start. The more you share,
+    the sharper the matches get — add detail any time.</p>
+  </div>
+  <div class="card">
+    <h2>2 · We gather &amp; score</h2>
+    <p class="meta">Postings stream in from {{ n_sources }} sources, duplicates are
+    merged, and every job is read in full and scored 0–10 against your ask.</p>
+  </div>
+  <div class="card">
+    <h2>3 · See <em>why</em> it fits</h2>
+    <p class="meta">Your private page ranks your matches and shows the reasoning —
+    green highlights where a job exceeds what you asked for, and a "you want /
+    the job offers" table. Apply directly with the company.</p>
+  </div>
 </div>
 
 <div class="card">
   <h2>Already signed up?</h2>
-  {% if go_error %}<p class="meta" style="color:#e3b341">{{ go_error }}</p>{% endif %}
+  {% if go_error %}<p class="meta" style="color:var(--danger)">{{ go_error }}</p>{% endif %}
   <form method="get" action="/go" class="bar">
     <input name="u" placeholder="your user name" maxlength="30" style="width:200px">
-    <button type="submit">open my matches</button>
+    <button type="submit" class="btn-quiet">open my matches</button>
   </form>
-  <p class="meta">Your matches live at /job_matches/&lt;your-user-name&gt; — this just takes you there.</p>
+  <p class="meta">Your matches live at /job_matches/&lt;your-user-name&gt; (cards)
+  and /all/&lt;your-user-name&gt; (table) — bookmark whichever you prefer. The
+  pages show no name and no contact details, just your matches.</p>
 </div>
 
-<div class="card">
-  <h2>2 · What to expect</h2>
-  <p class="meta">Sign-ups are reviewed by a human before any matching runs —
-  usually within a day. Your matches page address is simply your user name: <span style="white-space:nowrap">/job_matches/&lt;your-user-name&gt;</span>.
-  Bookmark it; it's yours alone and shows no name, no contact details — just
-  your matches. It stays empty until your first matching run completes.</p>
-</div>
-
-<div class="card">
-  <h2>3 · Reviewing your matches</h2>
-  <p class="meta">Each match carries a score out of 10 from a strict screener
-  reading the full job description against your profile. Open a match to see:
-  <span class="good">✓ green highlights</span> where the job <em>exceeds</em>
-  what you asked for, a "you want / the job offers" alignment table explaining
-  the score, the full description, a relative salary signal, and links to the
-  listing. Filter by title keyword and sort by score, title, company or
-  recency. Apply directly with the company — the listing links take you
-  there.</p>
-</div>
-
-<p class="meta">Site map: <a href="/onboard">sign up</a> · <a href="/go">your matches</a> (just your user name) · questions — ask whoever sent you here.</p>
+<p class="meta" style="text-align:center">Free, personal, no recruiters.
+Questions — ask whoever sent you here.</p>
 {% endblock %}

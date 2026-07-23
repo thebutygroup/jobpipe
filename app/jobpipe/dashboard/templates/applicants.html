@@ -1,9 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Applicants</h1>
+{% if signups_capped %}<div class="alert">⚑ <strong>{{ signups_capped }} signup(s) hit today's auto-activation cap</strong> — inactive profiles below need activating (scripts/approve_user.py or a one-line UPDATE).</div>{% endif %}
 {% for ap in applicants %}
 <div class="card">
-  <h2>{{ ap.name }}{% if not ap.active %} <span class="meta">(inactive)</span>{% endif %}</h2>
+  <h2>{{ ap.name }}{% if not ap.active %} <span class="flag">⚑ inactive — awaiting activation</span>{% endif %}</h2>
   <p class="meta">
     {{ ap.n_matches }} matches · {{ ap.n_review }} in review ·
     {{ ap.n_applied }} applied · {{ ap.n_interviews }} interviews

@@ -4,7 +4,7 @@
 {% if rows %}
   <form method="get" class="meta" style="margin:10px 0">
   <input name="q" value="{{ q }}" placeholder="filter title, e.g. data engineer"
-         style="background:#1c2128;border:1px solid #333;color:#e6e6e6;padding:5px 8px;border-radius:4px;width:220px">
+         style="width:220px">
   <input type="hidden" name="sort" value="{{ sort }}">
   <button type="submit">filter</button>
   {% if q %}<a href="?sort={{ sort }}">clear</a>{% endif %}

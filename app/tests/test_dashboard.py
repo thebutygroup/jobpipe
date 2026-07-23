@@ -144,3 +144,71 @@ def test_public_all_view_rejects_post(conn, monkeypatch):
     _point_db(monkeypatch, conn)
     seed_two_users(conn)
     assert Client().post("/all/joebuty").status_code == 405
+
+
+# ---- self-serve signup: minimal fields, auto-activation, daily cap ------------------
+
+def _signup(client, name, **extra):
+    return client.post("/onboard", {
+        "full_name": name, "target_titles": "Senior Data Engineer",
+        "positioning": "Hands-on data platform work at a company that ships.",
+        **extra})
+
+
+def test_minimal_signup_activates_and_starts_matching(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    from jobpipe.dashboard import views as v
+    runs = []
+    monkeypatch.setattr(v, "_instant_mini_run", lambda ref: runs.append(ref))
+    r = _signup(Client(), "maya")
+    assert r.status_code == 200 and b"maya" in r.content
+    assert b"Matching has started" in r.content
+    row = conn.execute("SELECT active, user_ref, profile_yaml FROM applicants").fetchone()
+    assert row["active"] == 1 and row["user_ref"] == "maya"
+    assert "Senior Data Engineer" in row["profile_yaml"]
+    assert runs == ["maya"]  # instant mini-run kicked off
+
+
+def test_signup_requires_title_and_sentence(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    c = Client()
+    r = c.post("/onboard", {"full_name": "maya", "target_titles": "",
+                            "positioning": "something"})
+    assert r.status_code == 400
+    r = c.post("/onboard", {"full_name": "maya", "target_titles": "Data Engineer",
+                            "positioning": "  "})
+    assert r.status_code == 400
+    assert conn.execute("SELECT COUNT(*) c FROM applicants").fetchone()["c"] == 0
+
+
+def test_signup_email_is_optional(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    from jobpipe.dashboard import views as v
+    monkeypatch.setattr(v, "_instant_mini_run", lambda ref: None)
+    assert _signup(Client(), "noemail").status_code == 200
+    assert _signup(Client(), "hasemail", email="x@y.com").status_code == 200
+
+
+def test_signup_daily_cap_flags_for_joe(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    from jobpipe.config import settings
+    from jobpipe.dashboard import views as v
+    monkeypatch.setattr(settings, "signup_daily_cap", 2)
+    monkeypatch.setattr(v, "_instant_mini_run", lambda ref: None)
+    emails = []
+    import jobpipe.notify as notify
+    monkeypatch.setattr(notify, "send_email", lambda **kw: emails.append(kw) or True)
+    c = Client()
+    assert b"Matching has started" in _signup(c, "one").content
+    assert b"Matching has started" in _signup(c, "two").content
+    r3 = _signup(c, "three")  # over cap -> pending + flagged
+    assert r3.status_code == 200 and b"human review" in r3.content
+    row = conn.execute("SELECT active FROM applicants WHERE user_ref='three'").fetchone()
+    assert row["active"] == 0
+    assert v.signups_capped_today(conn) == 1
+    assert emails and "signup cap" in emails[0]["subject"]
+    # the flag is visible on internal pages
+    q = c.get("/queue")
+    assert b"auto-activation cap" in q.content
+    a = c.get("/applicants")
+    assert b"auto-activation cap" in a.content and b"awaiting activation" in a.content

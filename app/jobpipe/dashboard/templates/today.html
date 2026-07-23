@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
+<h1>Review queue</h1>
+{% if signups_capped %}<div class="alert">⚑ <strong>{{ signups_capped }} signup(s) hit today's auto-activation cap</strong> and are waiting — activate them from the <a href="/applicants">applicants page</a> or scripts/approve_user.py.</div>{% endif %}
 {% if apps %}
   {% for a in apps %}
   <div class="card">
