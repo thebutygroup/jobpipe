@@ -37,6 +37,25 @@ def test_locations_compatible():
     assert dedupe.locations_compatible("London", "London, Greater London")
     assert dedupe.locations_compatible("", "London")  # empty side is permissive
     assert not dedupe.locations_compatible("Manchester", "London")
+    # Reed often returns bare postcodes ("WC2A1AA") where other sources say the
+    # city — a postcode is "no city info", not a different place (seen live 23 Jul)
+    assert dedupe.locations_compatible("WC2A1AA", "London")
+    assert dedupe.locations_compatible("EC4A 3BZ", "London, UK")
+    assert dedupe.locations_compatible("SW1A", "London")
+    assert not dedupe.locations_compatible("Manchester M1", "London")
+
+
+def test_postcode_location_merges_with_city(conn):
+    """The live case: ATS says London, Reed says WC2A1AA — same job."""
+    ats_id, _ = upsert_posting(conn, dto(
+        company="Claranet", source="ats", source_detail="greenhouse",
+        title="Data Engineer", location="London",
+        url="https://boards.greenhouse.io/claranet/1"))
+    reed_id, new = upsert_posting(conn, dto(
+        company="Claranet Limited", source="reed", title="Data Engineer",
+        location="WC2A1AA", url="https://www.reed.co.uk/jobs/data-engineer/9",
+        external_id="9"))
+    assert not new and reed_id == ats_id
 
 
 # ---- integration: ingest-time dedupe -------------------------------------------------

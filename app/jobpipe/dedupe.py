@@ -69,10 +69,18 @@ def locations_compatible(a: str, b: str) -> bool:
 _LOC_NOISE = {"uk", "united", "kingdom", "england", "greater", "central", "hybrid",
               "remote", "area", "city", "of"}
 
+# UK postcodes (full 'wc2a1aa' or outward-only 'wc2a' / 'sw1a'): 1-2 letters,
+# then a digit — no real city name matches that shape. Reed frequently returns
+# a bare postcode where other sources say the city, so postcodes are treated
+# as "no city information" (permissive) rather than as a distinct place.
+_POSTCODE = re.compile(r"^[a-z]{1,2}\d[a-z\d]{0,2}(\d[a-z]{2})?$")
+
 
 def _location_tokens(loc: str) -> set[str]:
     tokens = set(_PUNCT.sub(" ", (loc or "").lower()).split())
-    return tokens - _LOC_NOISE
+    # postcode fragments and digit-led tokens ('3bz', '221b') carry no city info
+    return {t for t in tokens - _LOC_NOISE
+            if not _POSTCODE.match(t) and not t[0].isdigit()}
 
 
 def titles_match(a: str, b: str) -> tuple[bool, str, float]:
