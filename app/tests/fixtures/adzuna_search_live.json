@@ -1,0 +1,321 @@
+{
+ "results": [
+  {
+   "salary_min": 59438.12,
+   "salary_is_predicted": "1",
+   "contract_time": "full_time",
+   "description": "AWS Infrastructure Services owns the design, planning, delivery, and operation of all AWS global infrastructure. In other words, we\u2019re the people who keep the cloud running. We support all AWS data centers and all of the servers, storage, networking, power, and cooling equipment that ensure our customers have continual access to the innovation they rely on. We work on the most challenging problems, with thousands of variables impacting the supply chain \u2014 and we\u2019re looking for talented people wh\u2026",
+   "location": {
+    "area": [
+     "UK",
+     "London",
+     "Central London",
+     "Charing Cross"
+    ],
+    "__CLASS__": "Adzuna::API::Response::Location",
+    "display_name": "Charing Cross, Central London"
+   },
+   "longitude": -0.127788,
+   "company": {
+    "__CLASS__": "Adzuna::API::Response::Company",
+    "display_name": "Amazon TA"
+   },
+   "salary_max": 59438.12,
+   "adref": "eyJhbGciOiJIUzI1NiJ9.eyJzIjoieUdQMkI0bUc4Ukc1NWRheWxqTFlnUSIsImkiOiI1NzY2OTExNDU3In0.4wr58GdnEGv6O3nJkdm_Es7TuyQM6wEDjiTIDIL2eJ0",
+   "category": {
+    "label": "IT Jobs",
+    "__CLASS__": "Adzuna::API::Response::Category",
+    "tag": "it-jobs"
+   },
+   "created": "2026-06-17T16:58:40Z",
+   "id": "5766911457",
+   "title": "Chief Engineer, Data Centre Engineering Operations, Data Centre Engineering Operations",
+   "__CLASS__": "Adzuna::API::Response::Job",
+   "latitude": 51.506896,
+   "redirect_url": "https://www.adzuna.co.uk/jobs/land/ad/5766911457?se=yGP2B4mG8RG55dayljLYgQ&utm_medium=api&utm_source=697c1b57&v=86A730781B93A3F0684D64B9213E38B10B0C7230"
+  },
+  {
+   "__CLASS__": "Adzuna::API::Response::Job",
+   "latitude": 51.503378,
+   "company": {
+    "__CLASS__": "Adzuna::API::Response::Company",
+    "display_name": "Fortnum & Mason"
+   },
+   "created": "2026-07-15T10:57:20Z",
+   "id": "5801050193",
+   "longitude": -0.139134,
+   "location": {
+    "display_name": "London, UK",
+    "area": [
+     "UK",
+     "London"
+    ],
+    "__CLASS__": "Adzuna::API::Response::Location"
+   },
+   "title": "Data Engineer",
+   "salary_max": 54291.42,
+   "redirect_url": "https://www.adzuna.co.uk/jobs/land/ad/5801050193?se=yGP2B4mG8RG55dayljLYgQ&utm_medium=api&utm_source=697c1b57&v=10E666A47242FAB2297B9DA8A1BA651F524E4B80",
+   "salary_is_predicted": "1",
+   "adref": "eyJhbGciOiJIUzI1NiJ9.eyJzIjoieUdQMkI0bUc4Ukc1NWRheWxqTFlnUSIsImkiOiI1ODAxMDUwMTkzIn0.WJa49_m3_RQUmt6a_qbq2nNGbSHDlIustco9B6nso5A",
+   "salary_min": 54291.42,
+   "category": {
+    "tag": "it-jobs",
+    "__CLASS__": "Adzuna::API::Response::Category",
+    "label": "IT Jobs"
+   },
+   "description": "Data Engineer Our Head Office department is in the heart of Piccadilly and occupies the 5th & 6th floor of our beautiful flagship store. This central London location offers so much to explore including restaurants, bars, cultural sites, shopping and more, and only a short walk from the Green Park Tube Station and plenty of bus stops. Data Engineer - Azure & Power BI We're looking for an experienced Data Engineer to design, build and support high-quality data solutions that power reporting and a\u2026"
+  },
+  {
+   "salary_is_predicted": "1",
+   "salary_min": 48976.09,
+   "adref": "eyJhbGciOiJIUzI1NiJ9.eyJzIjoieUdQMkI0bUc4Ukc1NWRheWxqTFlnUSIsImkiOiI1Nzg5OTg4OTk0In0.1H3CufE-yrmg6DmgI6WmUd1aM9LhQSEzcq3hOFYaQ6s",
+   "description": "hackajob is collaborating with Version 1 to connect them with exceptional professionals for this role. Designs, implements, and maintains complex data engineering solutions to acquire and prepare data. Creates and maintains data pipelines to connect data within and between data stores, applications and organisations. Carries out complex data quality checking and remediation. Contributes to organisational policies, standards, and guidelines for data engineering. Designing and implementing highly\u2026",
+   "category": {
+    "__CLASS__": "Adzuna::API::Response::Category",
+    "label": "IT Jobs",
+    "tag": "it-jobs"
+   },
+   "latitude": 51.503378,
+   "__CLASS__": "Adzuna::API::Response::Job",
+   "company": {
+    "__CLASS__": "Adzuna::API::Response::Company",
+    "display_name": "Version 1"
+   },
+   "id": "5789988994",
+   "created": "2026-07-06T16:39:37Z",
+   "location": {
+    "__CLASS__": "Adzuna::API::Response::Location",
+    "area": [
+     "UK",
+     "London"
+    ],
+    "display_name": "London, UK"
+   },
+   "title": "Data Engineer",
+   "longitude": -0.139134,
+   "salary_max": 48976.09,
+   "redirect_url": "https://www.adzuna.co.uk/jobs/land/ad/5789988994?se=yGP2B4mG8RG55dayljLYgQ&utm_medium=api&utm_source=697c1b57&v=6DE50B13C83742045335F7E17932B650A249ADAA"
+  },
+  {
+   "__CLASS__": "Adzuna::API::Response::Job",
+   "company": {
+    "__CLASS__": "Adzuna::API::Response::Company",
+    "display_name": "Solirius Reply"
+   },
+   "latitude": 51.503378,
+   "location": {
+    "__CLASS__": "Adzuna::API::Response::Location",
+    "area": [
+     "UK",
+     "London"
+    ],
+    "display_name": "London, UK"
+   },
+   "title": "Data Engineer",
+   "longitude": -0.139134,
+   "created": "2026-07-06T16:39:35Z",
+   "id": "5789988745",
+   "redirect_url": "https://www.adzuna.co.uk/jobs/land/ad/5789988745?se=yGP2B4mG8RG55dayljLYgQ&utm_medium=api&utm_source=697c1b57&v=042D074805C3E10B7F1231C27ADEA0785511094A",
+   "salary_max": 67684.66,
+   "salary_is_predicted": "1",
+   "salary_min": 67684.66,
+   "adref": "eyJhbGciOiJIUzI1NiJ9.eyJpIjoiNTc4OTk4ODc0NSIsInMiOiJ5R1AyQjRtRzhSRzU1ZGF5bGpMWWdRIn0.IMS1Zj_WlILKFMXzcZuc0Ly8AfD9_FZ4XL8r5czLUKA",
+   "description": "hackajob is collaborating with Solirius Reply to connect them with exceptional professionals for this role. Solirius Reply, part of the Reply Group, delivers technical consultancy and application delivery to our clients in order to solve real world problems and allow our clients to respond to an ever-changing technical landscape. We partner closely with our clients, embedding our consultants into their businesses in order to provide a bespoke service, allowing us to truly understand our clients\u2026",
+   "category": {
+    "__CLASS__": "Adzuna::API::Response::Category",
+    "label": "IT Jobs",
+    "tag": "it-jobs"
+   }
+  },
+  {
+   "salary_max": 50539.29,
+   "location": {
+    "display_name": "London, UK",
+    "area": [
+     "UK",
+     "London"
+    ],
+    "__CLASS__": "Adzuna::API::Response::Location"
+   },
+   "longitude": -0.139134,
+   "company": {
+    "__CLASS__": "Adzuna::API::Response::Company",
+    "display_name": "BAE Systems Digital Intelligence"
+   },
+   "contract_time": "part_time",
+   "description": "hackajob is collaborating with BAE Systems Digital Intelligence to connect them with exceptional professionals for this role. Location(s): London or Manchester BAE Systems Digital Intelligence is home to 4,500 digital, cyber and intelligence experts. We work collaboratively across 10 countries to collect, connect and understand complex data, so that governments, nation states, armed forces and commercial businesses can unlock digital advantage in the most demanding environments. Job Title: Data\u2026",
+   "salary_min": 50539.29,
+   "salary_is_predicted": "1",
+   "redirect_url": "https://www.adzuna.co.uk/jobs/land/ad/5803541600?se=yGP2B4mG8RG55dayljLYgQ&utm_medium=api&utm_source=697c1b57&v=E82E999CEAB255698F20E55D7193948208C83C61",
+   "title": "Data Engineer",
+   "id": "5803541600",
+   "created": "2026-07-16T20:18:28Z",
+   "latitude": 51.503378,
+   "__CLASS__": "Adzuna::API::Response::Job",
+   "category": {
+    "tag": "it-jobs",
+    "__CLASS__": "Adzuna::API::Response::Category",
+    "label": "IT Jobs"
+   },
+   "adref": "eyJhbGciOiJIUzI1NiJ9.eyJpIjoiNTgwMzU0MTYwMCIsInMiOiJ5R1AyQjRtRzhSRzU1ZGF5bGpMWWdRIn0.w7vn6OBxgV3AUl9s7e9C3s7ZbIFBsT-o1sPfgjGtiMw"
+  },
+  {
+   "title": "Data Engineer",
+   "id": "5794152645",
+   "created": "2026-07-09T13:26:31Z",
+   "__CLASS__": "Adzuna::API::Response::Job",
+   "latitude": 51.503378,
+   "redirect_url": "https://www.adzuna.co.uk/jobs/details/5794152645?utm_medium=api&utm_source=697c1b57",
+   "adref": "eyJhbGciOiJIUzI1NiJ9.eyJzIjoieUdQMkI0bUc4Ukc1NWRheWxqTFlnUSIsImkiOiI1Nzk0MTUyNjQ1In0.QsPsQwIJY67LuIh0icFo2odmsRveJ0BHc3Aj35EM3AQ",
+   "category": {
+    "__CLASS__": "Adzuna::API::Response::Category",
+    "label": "IT Jobs",
+    "tag": "it-jobs"
+   },
+   "location": {
+    "display_name": "London, UK",
+    "area": [
+     "UK",
+     "London"
+    ],
+    "__CLASS__": "Adzuna::API::Response::Location"
+   },
+   "longitude": -0.139134,
+   "company": {
+    "__CLASS__": "Adzuna::API::Response::Company",
+    "display_name": "Hexaware"
+   },
+   "contract_type": "permanent",
+   "salary_max": 67000,
+   "salary_min": 67000,
+   "salary_is_predicted": "0",
+   "contract_time": "full_time",
+   "description": "Key Responsibilities: Architect and Develop : Contribute to the platform\u2019s architectural design and build integration, modeling, data persistence, and analytical systems. Data Pipelines : Implement, maintain, and test robust data pipelines. Metadata Management : Develop and manage metadata processes and tools. Performance Monitoring : Ensure the stability and performance of data pipelines. Data Quality : Implement tools for data curation, metadata management, and quality assurance. Collaboratio\u2026"
+  },
+  {
+   "id": "5811612146",
+   "created": "2026-07-23T01:58:12Z",
+   "title": "AWS Data Engineer / Data Analyst",
+   "location": {
+    "__CLASS__": "Adzuna::API::Response::Location",
+    "area": [
+     "UK",
+     "London",
+     "South East London"
+    ],
+    "display_name": "South East London, London"
+   },
+   "longitude": -0.02806,
+   "__CLASS__": "Adzuna::API::Response::Job",
+   "latitude": 51.451818,
+   "company": {
+    "__CLASS__": "Adzuna::API::Response::Company",
+    "display_name": "Gazelle Global Consulting Ltd"
+   },
+   "salary_max": 53645.5,
+   "redirect_url": "https://www.adzuna.co.uk/jobs/land/ad/5811612146?se=yGP2B4mG8RG55dayljLYgQ&utm_medium=api&utm_source=697c1b57&v=119CC4865C27BDACED6F9470EF71A9AD9D7EDAB8",
+   "salary_min": 53645.5,
+   "adref": "eyJhbGciOiJIUzI1NiJ9.eyJzIjoieUdQMkI0bUc4Ukc1NWRheWxqTFlnUSIsImkiOiI1ODExNjEyMTQ2In0.z3Faf64aZULMeBg3LExE7f6MHffeaCfajyWkJJ1l3z0",
+   "salary_is_predicted": "1",
+   "description": "AWS Data Engineer / Data Analyst Contract | London / Edinburgh | Hybrid | 6-12 Months We're looking for an experienced AWS Data Engineer / Data Analyst to join a major banking transformation programme, supporting Treasury and Regulatory Reporting initiatives. Key skills: Strong AWS data engineering and SQL expertise Data analysis across large, complex datasets Data mapping, lineage, reconciliation, and data quality Translating business requirements into technical specifications UAT, testing, an\u2026",
+   "category": {
+    "tag": "it-jobs",
+    "__CLASS__": "Adzuna::API::Response::Category",
+    "label": "IT Jobs"
+   }
+  },
+  {
+   "redirect_url": "https://www.adzuna.co.uk/jobs/land/ad/5789987491?se=yGP2B4mG8RG55dayljLYgQ&utm_medium=api&utm_source=697c1b57&v=E06C26F6CC994B8166C01AA2492502FD325A9920",
+   "salary_max": 70762.04,
+   "__CLASS__": "Adzuna::API::Response::Job",
+   "latitude": 51.503378,
+   "company": {
+    "__CLASS__": "Adzuna::API::Response::Company",
+    "display_name": "Solirius Reply"
+   },
+   "longitude": -0.139134,
+   "location": {
+    "display_name": "London, UK",
+    "__CLASS__": "Adzuna::API::Response::Location",
+    "area": [
+     "UK",
+     "London"
+    ]
+   },
+   "title": "Senior Data Engineer",
+   "id": "5789987491",
+   "created": "2026-07-06T16:39:16Z",
+   "description": "hackajob is collaborating with Solirius Reply to connect them with exceptional professionals for this role. About Us: Solirius Consulting delivers technical consultancy and application delivery to our clients in order to solve real world problems and allow our clients to respond to an ever-changing technical landscape. We partner closely with our clients, embedding our consultants into their businesses in order to provide a bespoke service, allowing us to truly understand our clients\u2019 needs. It\u2026",
+   "category": {
+    "tag": "it-jobs",
+    "__CLASS__": "Adzuna::API::Response::Category",
+    "label": "IT Jobs"
+   },
+   "salary_is_predicted": "1",
+   "salary_min": 70762.04,
+   "adref": "eyJhbGciOiJIUzI1NiJ9.eyJzIjoieUdQMkI0bUc4Ukc1NWRheWxqTFlnUSIsImkiOiI1Nzg5OTg3NDkxIn0.scz6ItkEixSah9Q3x8o2fyVseJ8fdz5RFGdjYL4lO9E"
+  },
+  {
+   "category": {
+    "__CLASS__": "Adzuna::API::Response::Category",
+    "label": "IT Jobs",
+    "tag": "it-jobs"
+   },
+   "description": "hackajob is collaborating with Solirius Reply to connect them with exceptional professionals for this role. Solirius Reply, part of the Reply Group, delivers technical consultancy and application delivery to our clients in order to solve real world problems and allow our clients to respond to an ever-changing technical landscape. We partner closely with our clients, embedding our consultants into their businesses in order to provide a bespoke service, allowing us to truly understand our clients\u2026",
+   "salary_min": 71092.27,
+   "adref": "eyJhbGciOiJIUzI1NiJ9.eyJzIjoieUdQMkI0bUc4Ukc1NWRheWxqTFlnUSIsImkiOiI1Nzg5OTg5Njk0In0.y9bIdvs4V5UUIvIxmd9K0nFTe2yxgKwn6hc-fLjvGcQ",
+   "salary_is_predicted": "1",
+   "redirect_url": "https://www.adzuna.co.uk/jobs/land/ad/5789989694?se=yGP2B4mG8RG55dayljLYgQ&utm_medium=api&utm_source=697c1b57&v=CF505CEDF059086B7B2608F23498199CBCCC6592",
+   "salary_max": 71092.27,
+   "longitude": -0.139134,
+   "location": {
+    "area": [
+     "UK",
+     "London"
+    ],
+    "__CLASS__": "Adzuna::API::Response::Location",
+    "display_name": "London, UK"
+   },
+   "title": "Senior Data Engineer",
+   "id": "5789989694",
+   "created": "2026-07-06T16:39:44Z",
+   "__CLASS__": "Adzuna::API::Response::Job",
+   "company": {
+    "display_name": "Solirius Reply",
+    "__CLASS__": "Adzuna::API::Response::Company"
+   },
+   "latitude": 51.503378
+  },
+  {
+   "latitude": 51.503378,
+   "__CLASS__": "Adzuna::API::Response::Job",
+   "company": {
+    "__CLASS__": "Adzuna::API::Response::Company",
+    "display_name": "Just Eat"
+   },
+   "id": "5812020930",
+   "created": "2026-07-23T08:49:40Z",
+   "longitude": -0.139134,
+   "location": {
+    "area": [
+     "UK",
+     "London"
+    ],
+    "__CLASS__": "Adzuna::API::Response::Location",
+    "display_name": "London, UK"
+   },
+   "title": "Senior Data Engineer",
+   "salary_max": 59752.13,
+   "redirect_url": "https://www.adzuna.co.uk/jobs/land/ad/5812020930?se=yGP2B4mG8RG55dayljLYgQ&utm_medium=api&utm_source=697c1b57&v=E54EC15D41996EA2C589D4AF822B82456D6F64C3",
+   "salary_is_predicted": "1",
+   "salary_min": 59752.13,
+   "adref": "eyJhbGciOiJIUzI1NiJ9.eyJzIjoieUdQMkI0bUc4Ukc1NWRheWxqTFlnUSIsImkiOiI1ODEyMDIwOTMwIn0.gIFaZg3bnXvP69dMxTNUG0Gg8bpL2cjO_4MWeIzukSM",
+   "description": "hackajob is collaborating with Just Eat to connect them with exceptional professionals for this role. Position: Senior Data Engineer Department: AI Growth Reporting to: Data Science Manager Location: London or Amsterdam Hybrid role: 3 days a week from our office & 2 days working from home Ready for a challenge? Then Just Eat Takeaway.com might be the place for you. We\u2019re a leading global online delivery platform, and our vision is to empower everyday convenience. Whether it\u2019s a Friday-night fea\u2026",
+   "category": {
+    "label": "Engineering Jobs",
+    "__CLASS__": "Adzuna::API::Response::Category",
+    "tag": "engineering-jobs"
+   }
+  }
+ ]
+}
