@@ -1,0 +1,67 @@
+{
+  "__comment": "Hand-written fixture matching the Adzuna /v1/api/jobs/gb/search response shape (developer.adzuna.com/docs/search). Deliberately TOY data — none of these jobs is real. Replace with a recorded live response once ADZUNA_APP_ID/ADZUNA_APP_KEY exist.",
+  "count": 3,
+  "mean": 28500,
+  "results": [
+    {
+      "id": "5001234567",
+      "title": "Trainee Preschooler",
+      "description": "Sunny Days Nursery is hiring a Trainee Preschooler. Duties include finger painting at scale, supervised napping, and snack-time stakeholder management. Crayon proficiency essential; juice-box experience a plus. This is a toy fixture posting, not a real job.",
+      "company": { "display_name": "Sunny Days Nursery Ltd" },
+      "location": {
+        "display_name": "London, Greater London",
+        "area": ["UK", "London", "Greater London"]
+      },
+      "salary_min": 21000,
+      "salary_max": 24000,
+      "salary_is_predicted": "0",
+      "redirect_url": "https://www.adzuna.co.uk/jobs/land/ad/5001234567?se=toyfixture",
+      "created": "2026-07-21T09:15:00Z",
+      "contract_type": "permanent",
+      "contract_time": "full_time",
+      "latitude": 51.5074,
+      "longitude": -0.1278,
+      "category": { "label": "Teaching Jobs", "tag": "teaching-jobs" }
+    },
+    {
+      "id": "5001234568",
+      "title": "Senior Sandcastle Engineer",
+      "description": "Seaside Constructions seeks a Senior Sandcastle Engineer to own our moat infrastructure. You will design tide-resilient turrets and mentor junior bucket operators. Toy fixture posting — not a real job.",
+      "company": { "display_name": "Seaside Constructions" },
+      "location": {
+        "display_name": "London, Greater London",
+        "area": ["UK", "London", "Greater London"]
+      },
+      "salary_min": 55000,
+      "salary_max": 70000,
+      "salary_is_predicted": "1",
+      "redirect_url": "https://www.adzuna.co.uk/jobs/land/ad/5001234568?se=toyfixture",
+      "created": "2026-07-22T14:30:00Z",
+      "contract_type": "contract",
+      "contract_time": "full_time",
+      "latitude": 51.5072,
+      "longitude": -0.1276,
+      "category": { "label": "Engineering Jobs", "tag": "engineering-jobs" }
+    },
+    {
+      "id": "5001234569",
+      "title": "Professional Cloud-Watcher",
+      "description": "Blue Sky Research needs a Professional Cloud-Watcher. Responsibilities: watching clouds, classifying cumulus, and escalating anything cumulonimbus. Toy fixture posting — not a real job.",
+      "company": { "display_name": "Blue Sky Research" },
+      "location": {
+        "display_name": "London, Greater London",
+        "area": ["UK", "London", "Greater London"]
+      },
+      "salary_min": null,
+      "salary_max": null,
+      "salary_is_predicted": "1",
+      "redirect_url": "https://www.adzuna.co.uk/jobs/land/ad/5001234569?se=toyfixture",
+      "created": "2026-07-22T08:00:00Z",
+      "contract_type": "permanent",
+      "contract_time": "part_time",
+      "latitude": 51.5033,
+      "longitude": -0.1195,
+      "category": { "label": "Scientific & QA Jobs", "tag": "scientific-qa-jobs" }
+    }
+  ]
+}
