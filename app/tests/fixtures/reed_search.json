@@ -1,0 +1,57 @@
+{
+  "__comment": "Hand-written fixture matching the Reed jobseeker API /api/1.0/search response shape (reed.co.uk/developers/jobseeker). Deliberately TOY data — none of these jobs is real. 'Trainee Pre-Schooler' intentionally duplicates the Adzuna fixture's 'Trainee Preschooler' (punctuation variant, same company modulo 'Ltd') to exercise cross-source dedupe. Replace with a recorded live response once REED_API_KEY exists.",
+  "totalResults": 3,
+  "results": [
+    {
+      "jobId": 88001001,
+      "employerId": 900001,
+      "employerName": "Sunny Days Nursery",
+      "employerProfileId": null,
+      "employerProfileName": null,
+      "jobTitle": "Trainee Pre-Schooler",
+      "locationName": "London",
+      "minimumSalary": 21000,
+      "maximumSalary": 24000,
+      "currency": "GBP",
+      "expirationDate": "20/08/2026",
+      "date": "20/07/2026",
+      "jobDescription": "Sunny Days Nursery is hiring a Trainee Pre-Schooler. Finger painting at scale, supervised napping, snack-time stakeholder management. Crayon proficiency essential. This is a toy fixture posting, not a real job.",
+      "applications": 7,
+      "jobUrl": "https://www.reed.co.uk/jobs/trainee-pre-schooler/88001001"
+    },
+    {
+      "jobId": 88001002,
+      "employerId": 900002,
+      "employerName": "Enamel Logistics",
+      "employerProfileId": null,
+      "employerProfileName": null,
+      "jobTitle": "Junior Tooth Fairy (Night Shift)",
+      "locationName": "London, Central London",
+      "minimumSalary": 26000,
+      "maximumSalary": null,
+      "currency": "GBP",
+      "expirationDate": "15/08/2026",
+      "date": "21/07/2026",
+      "jobDescription": "Enamel Logistics requires a Junior Tooth Fairy for the night shift. Duties: sub-pillow retrieval operations, coin logistics, strict no-waking SLA. Wings provided. Toy fixture posting — not a real job.",
+      "applications": 12,
+      "jobUrl": "https://www.reed.co.uk/jobs/junior-tooth-fairy-night-shift/88001002"
+    },
+    {
+      "jobId": 88001003,
+      "employerId": 900003,
+      "employerName": "Blue Sky Research Ltd",
+      "employerProfileId": null,
+      "employerProfileName": null,
+      "jobTitle": "Professional Cloud Watcher",
+      "locationName": "London",
+      "minimumSalary": null,
+      "maximumSalary": null,
+      "currency": "GBP",
+      "expirationDate": "30/08/2026",
+      "date": "22/07/2026",
+      "jobDescription": "Blue Sky Research needs a Professional Cloud Watcher. Watching clouds, classifying cumulus, escalating anything cumulonimbus. Toy fixture posting — not a real job.",
+      "applications": 3,
+      "jobUrl": "https://www.reed.co.uk/jobs/professional-cloud-watcher/88001003"
+    }
+  ]
+}

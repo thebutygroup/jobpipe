@@ -69,7 +69,7 @@ def test_sync_and_capped_resolution(conn, monkeypatch):
     assert stats["ftse100"] >= 5 and stats["sp500"] >= 5
     # resolution capped at 3, all classified bespoke via stubbed resolver
     monkeypatch.setattr(rmod, "resolve_company",
-                        lambda name, domain="": {"status": "bespoke", "domain": "x.com",
+                        lambda name, domain="", **kw: {"status": "bespoke", "domain": "x.com",
                                                  "careers_url": "https://x.com/careers",
                                                  "notes": "v2 agent scope"})
     r = resolve_batch(conn, cap=3)
@@ -86,7 +86,7 @@ def test_resolved_ats_enters_main_registry(conn, monkeypatch):
     monkeypatch.setattr(cmod, "fetch_index", lambda idx: ["AtsCo"] if idx == "ftse100" else [])
     sync_constituents(conn)
     monkeypatch.setattr(rmod, "resolve_company",
-                        lambda name, domain="": {"status": "resolved_ats",
+                        lambda name, domain="", **kw: {"status": "resolved_ats",
                                                  "ats": "greenhouse", "board_token": "atsco",
                                                  "domain": "atsco.com",
                                                  "careers_url": "https://atsco.com/careers"})

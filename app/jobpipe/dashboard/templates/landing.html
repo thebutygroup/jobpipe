@@ -1,10 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>jobpipe</h1>
-<p class="meta" style="font-size:15px;max-width:560px">A job-discovery pipeline.
-It watches company job boards and searches continuously, scores every posting
-against what <em>you</em> said you want, and gives you a private page of ranked
-matches — with the reasoning shown, not just a number.</p>
+<p style="font-size:17px;max-width:560px;margin:6px 0 2px"><strong>Describe the
+job you want — matching jobs find you.</strong></p>
+<p class="meta" style="font-size:15px;max-width:560px">Job search, inverted.
+jobpipe continuously ingests postings from <strong>{{ n_sources }} sources</strong>
+— {{ source_names|join:", " }} — deduplicates them into one clean feed, scores
+every posting against what <em>you</em> said you want, and gives you a private
+page of ranked matches with the reasoning shown, not just a number.</p>
 
 <div class="card">
   <h2>1 · Sign up</h2>

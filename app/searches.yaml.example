@@ -1,7 +1,24 @@
-# Built In saved searches to poll. Build a search on builtinlondon.uk (or any
-# Built In city site), copy the URL, name it here.
+# Saved searches to poll, one entry per (source, query).
+#   source: builtin (default when url is set) | adzuna | reed
+#   location/distance_miles are per-search parameters (default London / 15mi).
 searches:
+  # Built In saved searches: build one on builtinlondon.uk, copy the URL.
   - name: data-engineer-london
     url: https://builtinlondon.uk/jobs?search=data+engineer
   - name: fde-london
     url: https://builtinlondon.uk/jobs?search=forward+deployed+engineer
+
+  # Aggregator API searches (no-op until the API keys are in .env).
+  - name: data-engineer-adzuna
+    source: adzuna
+    keywords: data engineer
+    location: London
+  - name: data-engineer-reed
+    source: reed
+    keywords: data engineer
+    location: London
+    distance_miles: 15
+  - name: mlops-reed
+    source: reed
+    keywords: mlops engineer
+    location: London

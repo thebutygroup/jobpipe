@@ -39,6 +39,14 @@ class Settings(BaseSettings):
     crawl_llm_cap: int = 50               # Haiku extraction fallback, per whole run
     constituents_static_path: str = "constituents_static.yaml"
 
+    # ---- aggregator API sources (empty = source stays unconfigured, no-op) ----
+    adzuna_app_id: str = ""
+    adzuna_app_key: str = ""
+    reed_api_key: str = ""
+    aggregator_results_per_page: int = 50
+    aggregator_max_pages: int = 2          # pages per search per run
+    adzuna_daily_call_cap: int = 100       # free tier ~250/day; stay well under
+
     match_threshold: int = 7
     match_daily_call_cap: int = 200
     match_test_limit: int = 0        # >0 caps matcher to N postings (testing)
@@ -55,7 +63,7 @@ class Settings(BaseSettings):
 
     def redacted(self) -> dict:
         d = self.model_dump()
-        for key in ("anthropic_api_key", "smtp_password"):
+        for key in ("anthropic_api_key", "smtp_password", "adzuna_app_key", "reed_api_key"):
             if d.get(key):
                 d[key] = d[key][:4] + "…redacted"
         return d

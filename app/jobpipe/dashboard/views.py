@@ -103,7 +103,15 @@ def _latest_outcomes(app_ids: list[int]) -> dict[int, str]:
 def landing(request):
     """Public front door: what this is, how to onboard, what to expect,
     how to read your matches. No job data, no internal links."""
-    return render(request, "landing.html", {"hide_internal_nav": True})
+    from ..sources import registry
+
+    display = {"greenhouse": "Greenhouse", "lever": "Lever", "ashby": "Ashby",
+               "workable": "Workable", "builtin": "Built In", "adzuna": "Adzuna",
+               "reed": "Reed"}
+    names = [display.get(n, n.title()) for n in registry.all_sources()]
+    return render(request, "landing.html",
+                  {"hide_internal_nav": True, "source_names": names,
+                   "n_sources": len(names)})
 
 
 @require_GET
@@ -406,6 +414,33 @@ def outcome_link(request, outcome_id: int):
     finally:
         conn.close()
     return redirect("/stats")
+
+
+@require_GET
+def sources(request):
+    """Which sources are worth having? Uniqueness, overlap, freshness and
+    match quality per source, plus operational health. Private."""
+    from .. import source_analytics
+    from ..sources import registry
+
+    conn = connect()
+    try:
+        overlap = source_analytics.overlap_matrix(conn)
+        volume = source_analytics.volume_by_day(conn)
+        ctx = {
+            "health": registry.health(conn),
+            "summary": source_analytics.source_summary(conn),
+            "overlap_sources": overlap["sources"],
+            "overlap_rows": [
+                {"source": a, "total": overlap["totals"][a],
+                 "cells": [overlap["rows"][a][b] for b in overlap["sources"]]}
+                for a in overlap["sources"]],
+            "volume_days": [d[5:] for d in volume["days"]],   # MM-DD
+            "volume_rows": sorted(volume["series"].items()),
+        }
+    finally:
+        conn.close()
+    return render(request, "sources.html", ctx)
 
 
 @require_GET

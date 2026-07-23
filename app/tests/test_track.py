@@ -17,8 +17,8 @@ def _seed_submitted(conn, company="Acme"):
 def test_confirmation_matches_and_ignores_newsletters(conn):
     _seed_submitted(conn, "Acme")
     messages = [
-        ("noreply@acme.com", "We've received your application", "<id-1>"),
-        ("news@other.com", "Weekly newsletter: Acme raises Series B", "<id-2>"),
+        ("noreply@acme.com", "We've received your application", "<id-1>", ""),
+        ("news@other.com", "Weekly newsletter: Acme raises Series B", "<id-2>", ""),
     ]
     n = confirm.match_and_confirm(conn, messages)
     assert n == 1
@@ -29,5 +29,5 @@ def test_confirmation_matches_and_ignores_newsletters(conn):
 def test_newsletter_alone_confirms_nothing(conn):
     _seed_submitted(conn, "Acme")
     n = confirm.match_and_confirm(conn, [
-        ("news@acme.com", "Acme product update — no application here", "<id-9>")])
+        ("news@acme.com", "Acme product update — no application here", "<id-9>", "")])
     assert n == 0

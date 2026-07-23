@@ -18,7 +18,9 @@ class FetchError(Exception):
     pass
 
 
-def polite_get(url: str, *, timeout: int = 30, max_retries: int = 3) -> requests.Response:
+def polite_get(url: str, *, timeout: int = 30, max_retries: int = 3,
+               auth: tuple[str, str] | None = None,
+               params: dict | None = None) -> requests.Response:
     from urllib.parse import urlsplit
 
     host = urlsplit(url).netloc
@@ -31,7 +33,7 @@ def polite_get(url: str, *, timeout: int = 30, max_retries: int = 3) -> requests
     for attempt in range(1, max_retries + 1):
         _last_request_at[host] = time.monotonic()
         try:
-            resp = requests.get(url, timeout=timeout,
+            resp = requests.get(url, timeout=timeout, auth=auth, params=params,
                                 headers={"User-Agent": settings.user_agent})
             if resp.status_code == 200:
                 return resp
