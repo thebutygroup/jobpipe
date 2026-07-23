@@ -62,7 +62,7 @@ def fetch_recent(host, port, user, password, since_days=7):
             _typ, msg_data = M.fetch(num, "(RFC822)")
             msg = email.message_from_bytes(msg_data[0][1])
             out.append((_decode(msg.get("From", "")), _decode(msg.get("Subject", "")),
-                        msg.get("Message-ID", "")))
+                        msg.get("Message-ID", ""), _body_text(msg)))
         return out
     finally:
         try:

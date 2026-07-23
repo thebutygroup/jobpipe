@@ -56,7 +56,8 @@ def test_golden_scoring_bands(conn, profile):
     for t in GOLDEN:
         seed(conn, t)
     client = FakeClient(GOLDEN)
-    stats = matcher.run(conn, profile, client=client)
+    aid = matcher.ensure_applicant(conn, profile)
+    stats = matcher.run(conn, profile, aid, client=client)
     assert stats["matched"] == 2 and stats["rejected"] == 3
     matched_titles = {r["title"] for r in conn.execute(
         "SELECT p.title FROM applications a JOIN postings p ON p.id=a.posting_id")}
@@ -66,9 +67,10 @@ def test_golden_scoring_bands(conn, profile):
 def test_no_rematch_of_unchanged_hash(conn, profile):
     seed(conn, "Senior Data Engineer")
     client = FakeClient({"Senior Data Engineer": 8})
-    matcher.run(conn, profile, client=client)
+    aid = matcher.ensure_applicant(conn, profile)
+    matcher.run(conn, profile, aid, client=client)
     calls_after_first = client.calls
-    matcher.run(conn, profile, client=client)
+    matcher.run(conn, profile, aid, client=client)
     assert client.calls == calls_after_first  # nothing rematched
 
 
@@ -76,7 +78,8 @@ def test_malformed_output_retried_then_ok(conn, profile):
     seed(conn, "Senior Data Engineer")
     client = FakeClient({"Senior Data Engineer": 8},
                         malformed_first_for={"Senior Data Engineer"})
-    stats = matcher.run(conn, profile, client=client)
+    aid = matcher.ensure_applicant(conn, profile)
+    stats = matcher.run(conn, profile, aid, client=client)
     assert stats["matched"] == 1 and client.calls == 2
 
 
@@ -87,5 +90,6 @@ def test_daily_call_cap(conn, profile, monkeypatch):
     for t in GOLDEN:
         seed(conn, t)
     client = FakeClient(GOLDEN)
-    stats = matcher.run(conn, profile, client=client)
+    aid = matcher.ensure_applicant(conn, profile)
+    stats = matcher.run(conn, profile, aid, client=client)
     assert stats["matched"] + stats["rejected"] == 2 and stats["capped"] == 1

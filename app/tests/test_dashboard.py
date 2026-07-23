@@ -41,7 +41,7 @@ def test_queue_and_detail_render(conn, monkeypatch):
     _point_db(monkeypatch, conn)
     app_id = seed_pending(conn)
     client = Client()
-    r1 = client.get("/")
+    r1 = client.get("/queue")
     assert r1.status_code == 200 and b"Acme" in r1.content and b"9/10" in r1.content
     r2 = client.get(f"/app/{app_id}")
     assert r2.status_code == 200 and b"Senior Data Engineer" in r2.content
