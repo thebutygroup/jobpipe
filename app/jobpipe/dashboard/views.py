@@ -578,9 +578,18 @@ def _instant_mini_run(user_ref: str) -> None:
     threading.Thread(target=work, daemon=True, name=f"mini-run-{user_ref}").start()
 
 
+def _notify_joe(subject: str, html_body: str) -> None:
+    """Best-effort owner notification; never blocks or fails a signup."""
+    try:
+        from .. import notify
+        notify.send_email(subject=subject, html_body=html_body)
+    except Exception:
+        pass
+
+
 def _activate_or_flag(conn, user_ref: str) -> bool:
     """Auto-activate a signup if under today's cap (returns True) or leave it
-    pending and flag it for Joe (returns False)."""
+    pending and flag it for Joe (returns False). Every signup emails Joe."""
     from ..config import settings as _settings
     from ..db import log_event
 
@@ -588,20 +597,24 @@ def _activate_or_flag(conn, user_ref: str) -> bool:
         with tx(conn):
             conn.execute("UPDATE applicants SET active = 1 WHERE user_ref = ?", (user_ref,))
             log_event(conn, "signup_auto_activated", payload={"user_ref": user_ref})
+        n_today = _auto_activations_today(conn)
         _instant_mini_run(user_ref)
+        _notify_joe(
+            subject=f"[jobpipe] new signup: {user_ref} (auto-activated "
+                    f"{n_today}/{_settings.signup_daily_cap} today)",
+            html_body=f"<p><b>{user_ref}</b> signed up and was auto-activated "
+                      f"({n_today}/{_settings.signup_daily_cap} today). An instant "
+                      f"mini match run is scoring their newest postings now; their "
+                      f"page is /job_matches/{user_ref}.</p>")
         return True
     with tx(conn):
         log_event(conn, "signup_capped", payload={"user_ref": user_ref})
-    try:  # best-effort heads-up; never blocks signup
-        from .. import notify
-        notify.send_email(
-            subject="[jobpipe] signup cap hit — approval needed",
-            html_body=f"<p><b>{user_ref}</b> signed up but today's auto-activation "
-                      f"cap ({_settings.signup_daily_cap}) was already reached. "
-                      f"They're pending — activate from the applicants page flag "
-                      f"or scripts/approve_user.py.</p>")
-    except Exception:
-        pass
+    _notify_joe(
+        subject=f"[jobpipe] new signup PENDING: {user_ref} — cap hit, approval needed",
+        html_body=f"<p><b>{user_ref}</b> signed up but today's auto-activation "
+                  f"cap ({_settings.signup_daily_cap}) was already reached. "
+                  f"They're pending — activate from the applicants page flag "
+                  f"or scripts/approve_user.py.</p>")
     return False
 
 

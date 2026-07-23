@@ -206,9 +206,26 @@ def test_signup_daily_cap_flags_for_joe(conn, monkeypatch):
     row = conn.execute("SELECT active FROM applicants WHERE user_ref='three'").fetchone()
     assert row["active"] == 0
     assert v.signups_capped_today(conn) == 1
-    assert emails and "signup cap" in emails[0]["subject"]
+    assert emails and "cap hit" in emails[-1]["subject"]  # last email = the capped one
     # the flag is visible on internal pages
     q = c.get("/queue")
     assert b"auto-activation cap" in q.content
     a = c.get("/applicants")
     assert b"auto-activation cap" in a.content and b"awaiting activation" in a.content
+
+
+def test_every_signup_notifies_joe(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    from jobpipe.config import settings
+    from jobpipe.dashboard import views as v
+    monkeypatch.setattr(settings, "signup_daily_cap", 1)
+    monkeypatch.setattr(v, "_instant_mini_run", lambda ref: None)
+    emails = []
+    import jobpipe.notify as notify
+    monkeypatch.setattr(notify, "send_email", lambda **kw: emails.append(kw) or True)
+    c = Client()
+    _signup(c, "first")   # auto-activated
+    _signup(c, "second")  # cap hit
+    assert len(emails) == 2
+    assert "new signup: first" in emails[0]["subject"] and "1/1" in emails[0]["subject"]
+    assert "PENDING: second" in emails[1]["subject"]
