@@ -79,7 +79,16 @@ def test_approve_and_reject_return_to_queue(conn, monkeypatch):
     assert r.headers["Location"] == "/queue"   # back to the queue, not the public landing
 
     # reject path: needs a fresh app in PENDING_REVIEW
-    app_id2 = seed_pending(conn)
+    pid2, _ = upsert_posting(conn, PostingDTO(
+            company_name="Beta Ltd", source="ats", external_id="2",
+            title="Marketing Lead", location="London",
+            apply_url="https://boards.greenhouse.io/beta/2", description_text="d"))
+    conn.execute("INSERT INTO applications (posting_id, applicant_id, state,"
+                 " answers_json, created_at, updated_at) VALUES"
+                 " (?,1,'PENDING_REVIEW','{}',datetime('now'),datetime('now'))", (pid2,))
+    conn.commit()
+    app_id2 = conn.execute("SELECT id FROM applications ORDER BY id DESC LIMIT 1"
+                           ).fetchone()["id"]
     r = client.post(f"/app/{app_id2}/reject")
     assert r.status_code == 302
     assert r.headers["Location"] == "/queue"
@@ -87,6 +96,10 @@ def test_approve_and_reject_return_to_queue(conn, monkeypatch):
 
 def test_sources_page_renders(conn, monkeypatch):
     _point_db(monkeypatch, conn)
+    from jobpipe.config import settings
+    monkeypatch.setattr(settings, "adzuna_app_id", "")
+    monkeypatch.setattr(settings, "adzuna_app_key", "")
+    monkeypatch.setattr(settings, "reed_api_key", "")
     # one deduped job seen by two sources
     pid, _ = upsert_posting(conn, PostingDTO(
         company_name="Sunny Days Nursery", source="ats", source_detail="greenhouse",
