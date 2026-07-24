@@ -7,7 +7,12 @@ a user name, a job title, and a sentence. Everything else makes your matches
 sharper, and you can come back to it any time. A salary figure is only ever
 used to flag jobs above or below your expectations; it's never displayed.</p>
 {% if error %}<div class="error">{{ error }}</div>{% endif %}
-<form method="post" class="card">{% csrf_token %}
+<script>
+function qsSubmit(form){var b=form.querySelector('button[type=submit]');
+if(form.dataset.busy)return false;form.dataset.busy=1;
+b.disabled=true;b.textContent='Creating your page…';return true;}
+</script>
+<form method="post" class="card" onsubmit="return qsSubmit(this)">{% csrf_token %}
   <style>.ob label{display:block;margin:12px 0 4px;font-size:13px;color:var(--ink-soft)}
   .ob input,.ob textarea,.ob select{width:100%;max-width:540px}
   .ob details{margin-top:18px;border-top:1px solid var(--line);padding-top:12px}

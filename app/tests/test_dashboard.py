@@ -68,20 +68,38 @@ def test_approve_blocked_by_unknown_field(conn, monkeypatch):
     assert state == "PENDING_REVIEW"  # unchanged
 
 
-def test_approve_succeeds_when_complete(conn, monkeypatch):
+def test_approve_and_reject_return_to_queue(conn, monkeypatch):
     _point_db(monkeypatch, conn)
-    answers = '{"name": {"label": "Name", "required": true, "value": "Joe", "unknown": false}}'
+    # approvable: the only required field has a value
+    answers = '{"sponsor": {"label": "visa", "required": true, "value": "No", "unknown": false}}'
     app_id = seed_pending(conn, answers_json=answers)
     client = Client()
-    resp = client.post(f"/app/{app_id}/approve")
-    assert resp.status_code == 302  # redirect to queue
-    state = conn.execute("SELECT state FROM applications WHERE id=?",
-                         (app_id,)).fetchone()["state"]
-    assert state == "APPROVED"
+    r = client.post(f"/app/{app_id}/approve")
+    assert r.status_code == 302
+    assert r.headers["Location"] == "/queue"   # back to the queue, not the public landing
+
+    # reject path: needs a fresh app in PENDING_REVIEW
+    pid2, _ = upsert_posting(conn, PostingDTO(
+            company_name="Beta Ltd", source="ats", external_id="2",
+            title="Marketing Lead", location="London",
+            apply_url="https://boards.greenhouse.io/beta/2", description_text="d"))
+    conn.execute("INSERT INTO applications (posting_id, applicant_id, state,"
+                 " answers_json, created_at, updated_at) VALUES"
+                 " (?,1,'PENDING_REVIEW','{}',datetime('now'),datetime('now'))", (pid2,))
+    conn.commit()
+    app_id2 = conn.execute("SELECT id FROM applications ORDER BY id DESC LIMIT 1"
+                           ).fetchone()["id"]
+    r = client.post(f"/app/{app_id2}/reject")
+    assert r.status_code == 302
+    assert r.headers["Location"] == "/queue"
 
 
 def test_sources_page_renders(conn, monkeypatch):
     _point_db(monkeypatch, conn)
+    from jobpipe.config import settings
+    monkeypatch.setattr(settings, "adzuna_app_id", "")
+    monkeypatch.setattr(settings, "adzuna_app_key", "")
+    monkeypatch.setattr(settings, "reed_api_key", "")
     # one deduped job seen by two sources
     pid, _ = upsert_posting(conn, PostingDTO(
         company_name="Sunny Days Nursery", source="ats", source_detail="greenhouse",
@@ -193,6 +211,7 @@ def test_signup_daily_cap_flags_for_joe(conn, monkeypatch):
     _point_db(monkeypatch, conn)
     from jobpipe.config import settings
     from jobpipe.dashboard import views as v
+    monkeypatch.setattr(v, "_async", lambda fn, *a: fn(*a))
     monkeypatch.setattr(settings, "signup_daily_cap", 2)
     monkeypatch.setattr(v, "_instant_mini_run", lambda ref: None)
     emails = []
@@ -206,9 +225,101 @@ def test_signup_daily_cap_flags_for_joe(conn, monkeypatch):
     row = conn.execute("SELECT active FROM applicants WHERE user_ref='three'").fetchone()
     assert row["active"] == 0
     assert v.signups_capped_today(conn) == 1
-    assert emails and "signup cap" in emails[0]["subject"]
+    assert emails and "cap hit" in emails[-1]["subject"]  # last email = the capped one
     # the flag is visible on internal pages
     q = c.get("/queue")
     assert b"auto-activation cap" in q.content
     a = c.get("/applicants")
     assert b"auto-activation cap" in a.content and b"awaiting activation" in a.content
+
+
+def test_every_signup_notifies_joe(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    from jobpipe.config import settings
+    from jobpipe.dashboard import views as v
+    monkeypatch.setattr(v, "_async", lambda fn, *a: fn(*a))
+    monkeypatch.setattr(settings, "signup_daily_cap", 1)
+    monkeypatch.setattr(v, "_instant_mini_run", lambda ref: None)
+    emails = []
+    import jobpipe.notify as notify
+    monkeypatch.setattr(notify, "send_email", lambda **kw: emails.append(kw) or True)
+    c = Client()
+    _signup(c, "first")   # auto-activated
+    _signup(c, "second")  # cap hit
+    assert len(emails) == 2
+    assert "new signup: first" in emails[0]["subject"] and "1/1" in emails[0]["subject"]
+    assert "PENDING: second" in emails[1]["subject"]
+
+
+def test_signup_with_email_gets_welcome(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    from jobpipe.dashboard import views as v
+    monkeypatch.setattr(v, "_async", lambda fn, *a: fn(*a))
+    monkeypatch.setattr(v, "_instant_mini_run", lambda ref: None)
+    sent = []
+    import jobpipe.notify as notify
+    monkeypatch.setattr(notify, "send_email",
+                        lambda **kw: sent.append(kw) or True)
+    _signup(Client(), "maya", email="maya@example.com")
+    welcome = [e for e in sent if e.get("to") == "maya@example.com"]
+    assert len(welcome) == 1
+    assert "Welcome" in welcome[0]["subject"]
+    assert "/job_matches/maya" in welcome[0]["html_body"]
+    assert "/all/maya" in welcome[0]["html_body"]
+    # Joe's alert still went out separately (no explicit to -> NOTIFY_TO)
+    assert any("new signup: maya" in e["subject"] and not e.get("to") for e in sent)
+
+
+def test_signup_without_email_sends_no_welcome(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    from jobpipe.dashboard import views as v
+    monkeypatch.setattr(v, "_async", lambda fn, *a: fn(*a))
+    monkeypatch.setattr(v, "_instant_mini_run", lambda ref: None)
+    sent = []
+    import jobpipe.notify as notify
+    monkeypatch.setattr(notify, "send_email",
+                        lambda **kw: sent.append(kw) or True)
+    _signup(Client(), "quiet")
+    assert not any(e.get("to") for e in sent)      # no user-facing mail
+    joe = [e for e in sent if "new signup: quiet" in e["subject"]]
+    assert joe                                      # Joe ALWAYS told
+    assert "No email provided" in joe[0]["html_body"]  # ...and told they're unreachable
+
+
+def test_signup_response_is_instant_even_if_smtp_hangs(conn, monkeypatch):
+    """Regression: emails used to send synchronously in the request — a slow
+    SMTP server made 'Start matching me' look dead (live, 23 Jul)."""
+    _point_db(monkeypatch, conn)
+    from jobpipe.dashboard import views as v
+    monkeypatch.setattr(v, "_instant_mini_run", lambda ref: None)
+    spawned = []
+    monkeypatch.setattr(v, "_async", lambda fn, *a: spawned.append(fn.__name__))
+
+    def hang(**kw):
+        raise AssertionError("send_email must not run on the request path")
+
+    import jobpipe.notify as notify
+    monkeypatch.setattr(notify, "send_email", hang)
+    r = _signup(Client(), "instant", email="x@y.com")
+    assert r.status_code == 200 and b"instant" in r.content
+    assert spawned == ["_signup_emails"]  # dispatched async, not executed inline
+
+
+def test_welcome_email_invites_more_detail(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    from jobpipe.dashboard import views as v
+    monkeypatch.setattr(v, "_instant_mini_run", lambda ref: None)
+    monkeypatch.setattr(v, "_async", lambda fn, *a: fn(*a))
+    sent = []
+    import jobpipe.notify as notify
+    monkeypatch.setattr(notify, "send_email", lambda **kw: sent.append(kw) or True)
+    _signup(Client(), "maya2", email="maya@example.com")
+    welcome = [e for e in sent if e.get("to")][0]
+    assert "Reply to this email" in welcome["html_body"]
+
+
+def test_landing_and_onboard_have_submit_feedback(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    for path in ("/", "/onboard"):
+        html = Client().get(path).content.decode()
+        assert "qsSubmit" in html and "Creating your page" in html, path

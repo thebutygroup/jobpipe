@@ -121,11 +121,16 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
     conn = connect()
     try:
-        if not (settings.smtp_user and settings.smtp_password):
+        if not settings.track_enabled:
+            log.info("outcome tracking disabled (TRACK_ENABLED=false); skipping")
+            return
+        imap_user = settings.imap_user or settings.smtp_user
+        imap_password = settings.imap_password or settings.smtp_password
+        if not (imap_user and imap_password):
             log.warning("mail creds absent; skipping confirmation tracking")
             return
         msgs = fetch_recent(settings.imap_host, settings.imap_port,
-                            settings.smtp_user, settings.smtp_password)
+                            imap_user, imap_password)
         n = match_and_confirm(conn, msgs)
         o = process_outcomes(conn, msgs)
         heartbeat(conn, "track", ok=True, detail=f"confirmed={n} outcomes={o}")

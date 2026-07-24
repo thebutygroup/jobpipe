@@ -1,0 +1,50 @@
+# jobpipe on a GCP Compute Engine VM — lift-and-shift of the home-box stack.
+# Copy to /opt/jobpipe/docker-compose.yml on the VM (see deploy/gcp/RUNBOOK.md).
+#
+# Differences from the home box:
+# - cloudflared runs here (token in .env as TUNNEL_TOKEN) — no ports exposed
+# - litestream sidecar continuously replicates the SQLite DB to a GCS bucket
+# - paths are Linux-native; the Windows .env encoding rules no longer apply
+
+services:
+  jobpipe-web:
+    build: ./repo
+    image: jobpipe:latest
+    command: >
+      gunicorn jobpipe.dashboard.wsgi:application
+      --bind 0.0.0.0:8010 --workers 2 --timeout 60 --access-logfile -
+    env_file: ./app.env
+    volumes:
+      - ./data:/app/data
+      - ./config/profile.yaml:/app/profile.yaml:ro
+      - ./config/companies.yaml:/app/companies.yaml:ro
+      - ./config/searches.yaml:/app/searches.yaml:ro
+    restart: unless-stopped
+
+  jobpipe-scheduler:
+    image: jobpipe:latest
+    command: python -m jobpipe.scheduler
+    env_file: ./app.env
+    volumes:
+      - ./data:/app/data
+      - ./config/profile.yaml:/app/profile.yaml:ro
+      - ./config/companies.yaml:/app/companies.yaml:ro
+      - ./config/searches.yaml:/app/searches.yaml:ro
+    depends_on: [jobpipe-web]
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    depends_on: [jobpipe-web]
+    restart: unless-stopped
+
+  litestream:
+    image: litestream/litestream:latest
+    command: replicate -config /etc/litestream.yml
+    volumes:
+      - ./data:/data
+      - ./litestream.yml:/etc/litestream.yml:ro
+    restart: unless-stopped
