@@ -172,3 +172,69 @@ def test_application_aggregate_loads(conn, tmp_path, monkeypatch):
     assert app.applicant.user_ref == "joebuty"
     assert app.resume_path.name == "resume-mlops.pdf"   # variant matched the title
     assert app.state == "MATCHED"
+
+
+# ---- greenhouse Job Board API extraction ---------------------------------------------
+
+GH_QUESTIONS = {
+    "questions": [
+        {"label": "First Name", "required": True,
+         "fields": [{"name": "first_name", "type": "input_text", "values": []}]},
+        {"label": "Last Name", "required": True,
+         "fields": [{"name": "last_name", "type": "input_text", "values": []}]},
+        {"label": "Email", "required": True,
+         "fields": [{"name": "email", "type": "input_text", "values": []}]},
+        {"label": "Resume/CV", "required": True,
+         "fields": [{"name": "resume", "type": "input_file", "values": []}]},
+        {"label": "Are you authorized to work in the UK?", "required": True,
+         "fields": [{"name": "question_123", "type": "multi_value_single_select",
+                     "values": [{"label": "Yes", "value": 0},
+                                {"label": "No", "value": 1}]}]},
+        {"label": "Why Anthropic?", "required": False,
+         "fields": [{"name": "question_456", "type": "textarea", "values": []}]},
+        {"label": "tracking", "required": False,
+         "fields": [{"name": "mapped_url_token", "type": "input_hidden", "values": []}]},
+    ],
+    "location_questions": [
+        {"label": "Location (City)", "required": False,
+         "fields": [{"name": "location", "type": "input_text", "values": []}]},
+    ],
+}
+
+
+def test_greenhouse_board_url_parsing():
+    from jobpipe.apply.platforms import greenhouse as gh
+    assert gh.parse_board_url(
+        "https://job-boards.greenhouse.io/anthropic/jobs/5343697008") == \
+        ("anthropic", "5343697008")
+    assert gh.parse_board_url(
+        "https://boards.eu.greenhouse.io/acme/jobs/1?t=x") == ("acme", "1")
+    assert gh.parse_board_url("https://careers.acme.example/jobs/1") is None
+
+
+def test_greenhouse_questions_mapping():
+    from jobpipe.apply.platforms import greenhouse as gh
+    fields = gh.questions_to_fields(GH_QUESTIONS)
+    by_key = {f.key: f for f in fields}
+    assert by_key["first_name"].kind == "text" and by_key["first_name"].required
+    assert by_key["resume"].kind == "file"
+    assert by_key["question_123"].kind == "select"
+    assert by_key["question_123"].options == ["Yes", "No"]
+    assert by_key["question_456"].kind == "textarea" and not by_key["question_456"].required
+    assert by_key["location"].label == "Location (City)"
+    assert "mapped_url_token" not in by_key          # hidden fields skipped
+
+
+def test_greenhouse_extract_uses_api(monkeypatch):
+    from jobpipe.apply.platforms import base as pbase
+    from jobpipe.apply.platforms import greenhouse as gh
+
+    class FakeResp:
+        def json(self):
+            return GH_QUESTIONS
+
+    monkeypatch.setattr("jobpipe.pollers.base.polite_get", lambda url, **k: FakeResp())
+    fields = pbase.get_applier("greenhouse").extract(
+        "https://job-boards.greenhouse.io/anthropic/jobs/5343697008")
+    assert len(fields) == 7 and fields[0].key == "first_name"
+    _ = gh  # imported for registration side-effect clarity
