@@ -39,12 +39,14 @@ def main() -> None:
             "      AND m.applicant_id = a.applicant_id"
             " WHERE ap.user_ref = ? AND a.state IN"
             "       ('MATCHED','PREPARED','PENDING_REVIEW')"
+            " AND p.closed_at IS NULL"
             " ORDER BY m.score DESC, a.created_at DESC LIMIT ?",
             (args.user, args.limit)).fetchall()
         if not rows:
             raise SystemExit(f"no reviewable matches for {args.user!r}")
-        winner = None
-        print(f"route-resolving top {len(rows)} matches for {args.user}:\n")
+        candidates = []
+        print(f"route-resolving top {len(rows)} matches for {args.user} "
+              f"(closed postings excluded):\n")
         for r in rows:
             try:
                 route = ensure_route(conn, r["posting_id"])
@@ -54,19 +56,24 @@ def main() -> None:
                 continue
             print(f"  [{r['score']}] {r['company']} — {r['title'][:50]}")
             print(f"       -> {route.platform} ({route.method}) {route.final_url[:70]}")
-            if (winner is None and route.method == BROWSER_FORM
-                    and route.platform in PREFERRED):
-                winner = (r, route)
+            if route.method == BROWSER_FORM and route.platform in PREFERRED:
+                candidates.append((r, route))
         print()
-        if winner:
-            r, route = winner
-            print(f"MVP TARGET: application {r['app_id']} — {r['company']} / "
+        if candidates:
+            print(f"{len(candidates)} candidate(s) on preferred platforms "
+                  f"(a dry run that finds the posting closed marks it and you "
+                  f"re-pick):")
+            for r, route in candidates:
+                print(f"  application {r['app_id']} — {r['company']} / "
+                      f"{r['title'][:50]} on {route.platform}")
+            r, route = candidates[0]
+            print(f"\nMVP TARGET: application {r['app_id']} — {r['company']} / "
                   f"{r['title']} on {route.platform}")
             print(f"next: python scripts/apply_dry_run.py --app-id {r['app_id']}")
         else:
-            print("No match resolved to a preferred platform (greenhouse/lever). "
-                  "Options: raise --limit, or run the MVP against a company_site "
-                  "route with the generic applier.")
+            print("No live match resolved to a preferred platform "
+                  "(greenhouse/lever). Options: raise --limit, or run the MVP "
+                  "against a company_site route with the generic applier.")
     finally:
         conn.close()
 
