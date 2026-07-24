@@ -238,3 +238,16 @@ def test_greenhouse_extract_uses_api(monkeypatch):
         "https://job-boards.greenhouse.io/anthropic/jobs/5343697008")
     assert len(fields) == 7 and fields[0].key == "first_name"
     _ = gh  # imported for registration side-effect clarity
+
+
+def test_greenhouse_404_means_posting_closed(monkeypatch):
+    from jobpipe.apply.platforms import base as pbase
+    from jobpipe.pollers.base import FetchError
+
+    def gone(url, **k):
+        raise FetchError("HTTP 404 for " + url)
+
+    monkeypatch.setattr("jobpipe.pollers.base.polite_get", gone)
+    with pytest.raises(pbase.PostingClosed):
+        pbase.get_applier("greenhouse").extract(
+            "https://job-boards.greenhouse.io/anthropic/jobs/999")

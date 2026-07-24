@@ -11,6 +11,11 @@ from __future__ import annotations
 from ...prepare.forms import FormField, extract_from_url
 
 
+class PostingClosed(Exception):
+    """The platform says this posting no longer exists — surfaced so callers
+    mark the posting closed instead of misdiagnosing an extraction failure."""
+
+
 class PlatformApplier:
     name = "generic"
     #: some boards prohibit automated submission — such platforms are

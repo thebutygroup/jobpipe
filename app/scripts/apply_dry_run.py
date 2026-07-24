@@ -31,6 +31,7 @@ from jobpipe.prepare.answers import resolve  # noqa: E402
 
 
 def prepare_preview(conn, app: Application) -> dict:
+    from jobpipe.apply.platforms.base import PostingClosed
     applier = app.job.applier
     if app.job.route.method != BROWSER_FORM:
         raise SystemExit(
@@ -40,7 +41,17 @@ def prepare_preview(conn, app: Application) -> dict:
         print(f"note: {applier.name} forms are JS-rendered; static extraction "
               "will find nothing — rerun with --screenshot in the submitter "
               "container for browser extraction (Phase 4 completes this).")
-    fields = applier.extract(app.job.route.final_url)
+    try:
+        fields = applier.extract(app.job.route.final_url)
+    except PostingClosed as e:
+        with tx(conn):
+            conn.execute("UPDATE postings SET closed_at = datetime('now') "
+                         "WHERE id = ?", (app.job.posting_id,))
+            log_event(conn, "apply:posting_closed", application_id=app.id,
+                      payload={"detail": str(e)})
+        raise SystemExit(f"POSTING CLOSED: {e}\n"
+                         "Marked closed in the DB. Re-run pick_mvp_posting.py "
+                         "(consider --limit 40) for a live target.")
     if not fields:
         raise SystemExit("no fields extracted (JS form or unexpected markup) — "
                          "browser extraction required")

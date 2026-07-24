@@ -20,7 +20,7 @@ import logging
 import re
 
 from ...prepare.forms import FormField
-from .base import PlatformApplier, register
+from .base import PlatformApplier, PostingClosed, register
 
 log = logging.getLogger(__name__)
 
@@ -77,7 +77,7 @@ class GreenhouseApplier(PlatformApplier):
             token, job_id = parsed
             api = API_EU if ".eu.greenhouse.io" in final_url else API
             try:
-                from ...pollers.base import polite_get
+                from ...pollers.base import FetchError, polite_get
 
                 payload = polite_get(api.format(token=token, job_id=job_id)).json()
                 fields = questions_to_fields(payload)
@@ -85,6 +85,13 @@ class GreenhouseApplier(PlatformApplier):
                     log.info("greenhouse: %d fields via Job Board API for %s/%s",
                              len(fields), token, job_id)
                     return fields
+            except FetchError as e:
+                if "HTTP 404" in str(e):
+                    # The board is live but this job isn't on it: posting closed.
+                    raise PostingClosed(
+                        f"greenhouse board {token!r} has no job {job_id} — "
+                        f"the posting has closed") from e
+                log.exception("greenhouse job-board API failed; falling back to HTML")
             except Exception:
                 log.exception("greenhouse job-board API failed; falling back to HTML")
         return super().extract(final_url)
