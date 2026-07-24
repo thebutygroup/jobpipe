@@ -657,9 +657,12 @@ def _activate_or_flag(conn, user_ref: str) -> tuple[bool, int]:
 
 def _signup_emails(user_ref: str, email: str, activated: bool, n_today: int) -> None:
     """All signup mail (Joe's alert + the user's welcome), run via _async so
-    the signup response returns instantly."""
+    the signup response returns instantly. Joe's alert ALWAYS sends — the
+    welcome is the only part conditional on the user having given an email."""
     from ..config import settings as _settings
 
+    reach = (f"Email: {email.strip()}" if (email or "").strip()
+             else "No email provided — unreachable except via their page")
     if activated:
         _notify_joe(
             subject=f"[jobpipe] new signup: {user_ref} (auto-activated "
@@ -667,14 +670,16 @@ def _signup_emails(user_ref: str, email: str, activated: bool, n_today: int) -> 
             html_body=f"<p><b>{user_ref}</b> signed up and was auto-activated "
                       f"({n_today}/{_settings.signup_daily_cap} today). An instant "
                       f"mini match run is scoring their newest postings now; their "
-                      f"page is /job_matches/{user_ref}.</p>")
+                      f"page is /job_matches/{user_ref}.</p>"
+                      f"<p>{reach}</p>")
     else:
         _notify_joe(
             subject=f"[jobpipe] new signup PENDING: {user_ref} — cap hit, approval needed",
             html_body=f"<p><b>{user_ref}</b> signed up but today's auto-activation "
                       f"cap ({_settings.signup_daily_cap}) was already reached. "
                       f"They're pending — activate from the applicants page flag "
-                      f"or scripts/approve_user.py.</p>")
+                      f"or scripts/approve_user.py.</p>"
+                      f"<p>{reach}</p>")
     _send_welcome(user_ref, email, activated)
 
 

@@ -263,7 +263,9 @@ def test_signup_without_email_sends_no_welcome(conn, monkeypatch):
                         lambda **kw: sent.append(kw) or True)
     _signup(Client(), "quiet")
     assert not any(e.get("to") for e in sent)      # no user-facing mail
-    assert any("new signup: quiet" in e["subject"] for e in sent)  # Joe still told
+    joe = [e for e in sent if "new signup: quiet" in e["subject"]]
+    assert joe                                      # Joe ALWAYS told
+    assert "No email provided" in joe[0]["html_body"]  # ...and told they're unreachable
 
 
 def test_signup_response_is_instant_even_if_smtp_hangs(conn, monkeypatch):
