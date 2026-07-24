@@ -68,16 +68,21 @@ def test_approve_blocked_by_unknown_field(conn, monkeypatch):
     assert state == "PENDING_REVIEW"  # unchanged
 
 
-def test_approve_succeeds_when_complete(conn, monkeypatch):
+def test_approve_and_reject_return_to_queue(conn, monkeypatch):
     _point_db(monkeypatch, conn)
-    answers = '{"name": {"label": "Name", "required": true, "value": "Joe", "unknown": false}}'
+    # approvable: the only required field has a value
+    answers = '{"sponsor": {"label": "visa", "required": true, "value": "No", "unknown": false}}'
     app_id = seed_pending(conn, answers_json=answers)
     client = Client()
-    resp = client.post(f"/app/{app_id}/approve")
-    assert resp.status_code == 302  # redirect to queue
-    state = conn.execute("SELECT state FROM applications WHERE id=?",
-                         (app_id,)).fetchone()["state"]
-    assert state == "APPROVED"
+    r = client.post(f"/app/{app_id}/approve")
+    assert r.status_code == 302
+    assert r.headers["Location"] == "/queue"   # back to the queue, not the public landing
+
+    # reject path: needs a fresh app in PENDING_REVIEW
+    app_id2 = seed_pending(conn)
+    r = client.post(f"/app/{app_id2}/reject")
+    assert r.status_code == 302
+    assert r.headers["Location"] == "/queue"
 
 
 def test_sources_page_renders(conn, monkeypatch):
