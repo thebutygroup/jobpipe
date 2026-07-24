@@ -25,9 +25,20 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--user", required=True)
     ap.add_argument("--limit", type=int, default=15, help="matches to route-resolve")
+    ap.add_argument("--reresolve", action="store_true",
+                    help="drop cached login_walled routes first (use after adding "
+                         "the Built In cookie jar so gated listings get a second try)")
     args = ap.parse_args()
     conn = connect()
     try:
+        if args.reresolve:
+            n = conn.execute(
+                "DELETE FROM apply_routes WHERE platform = 'login_walled' "
+                "AND posting_id IN (SELECT a.posting_id FROM applications a "
+                "  JOIN applicants ap ON ap.id = a.applicant_id "
+                "  WHERE ap.user_ref = ?)", (args.user,)).rowcount
+            conn.commit()
+            print(f"dropped {n} cached login_walled routes for re-resolution")
         rows = conn.execute(
             "SELECT a.id AS app_id, p.id AS posting_id, c.name AS company,"
             "       p.title, m.score"

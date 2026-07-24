@@ -251,3 +251,41 @@ def test_greenhouse_404_means_posting_closed(monkeypatch):
     with pytest.raises(pbase.PostingClosed):
         pbase.get_applier("greenhouse").extract(
             "https://job-boards.greenhouse.io/anthropic/jobs/999")
+
+
+# ---- builtin cookie jar (resolution-only) --------------------------------------------
+
+def test_cookie_jar_formats(tmp_path, monkeypatch):
+    from jobpipe.config import settings
+    from jobpipe.pollers import builtin
+    jar_path = tmp_path / "builtin_cookies.json"
+    monkeypatch.setattr(settings, "builtin_cookies_path", str(jar_path))
+    assert builtin.load_cookie_jar() is None                    # missing file
+    jar_path.write_text('{"session": "abc", "csrf": "x"}')
+    assert builtin.load_cookie_jar() == {"session": "abc", "csrf": "x"}
+    jar_path.write_text('[{"name": "session", "value": "abc", "domain": ".builtinlondon.uk"}]')
+    assert builtin.load_cookie_jar() == {"session": "abc"}      # Cookie-Editor export
+    jar_path.write_text("not json {")
+    assert builtin.load_cookie_jar() is None                    # invalid -> anonymous
+
+
+def test_resolve_job_detail_sends_cookies(tmp_path, monkeypatch):
+    from jobpipe.config import settings
+    from jobpipe.pollers import builtin
+    jar_path = tmp_path / "builtin_cookies.json"
+    jar_path.write_text('{"session": "abc"}')
+    monkeypatch.setattr(settings, "builtin_cookies_path", str(jar_path))
+    seen = {}
+
+    class FakeResp:
+        text = ('<html><a href="https://boards.greenhouse.io/acme/jobs/1">'
+                "Apply now</a></html>")
+
+    def fake_get(url, cookies=None, **kw):
+        seen["cookies"] = cookies
+        return FakeResp()
+
+    monkeypatch.setattr(builtin, "polite_get", fake_get)
+    detail = builtin.resolve_job_detail("https://builtinlondon.uk/job/x/1")
+    assert seen["cookies"] == {"session": "abc"}                # jar was sent
+    assert detail["external_apply_url"].startswith("https://boards.greenhouse.io")
