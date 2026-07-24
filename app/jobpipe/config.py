@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     track_enabled: bool = True   # false = skip outcome tracking (no IMAP mailbox yet)
 
     db_path: str = "/app/data/jobpipe.db"
+    assets_root: str = "/app/data/assets"   # asset vault: gitignored volume, never served
     profile_path: str = "profile.yaml"
     companies_path: str = "companies.yaml"
     searches_path: str = "searches.yaml"
