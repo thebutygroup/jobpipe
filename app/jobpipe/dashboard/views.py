@@ -295,7 +295,7 @@ def app_approve(request, app_id: int):
             return HttpResponseBadRequest(str(e))
     finally:
         conn.close()
-    return redirect("/")
+    return redirect("/queue")
 
 
 @require_POST
@@ -309,7 +309,7 @@ def app_reject(request, app_id: int):
             return HttpResponseBadRequest(str(e))
     finally:
         conn.close()
-    return redirect("/")
+    return redirect("/queue")
 
 
 @require_POST
