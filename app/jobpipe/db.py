@@ -158,6 +158,14 @@ CREATE INDEX IF NOT EXISTS idx_postings_hash ON postings(content_hash);
 CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at);
 CREATE INDEX IF NOT EXISTS idx_sp_posting ON source_postings(posting_id);
 CREATE INDEX IF NOT EXISTS idx_sp_source_ext ON source_postings(source, external_id);
+-- hot-path indexes (added after the matcher grew per-posting cap checks and
+-- per-posting EXISTS probes into events/matches; without these every probe is
+-- a full scan — brutal on a Windows-bind-mounted SQLite file):
+CREATE INDEX IF NOT EXISTS idx_events_posting_type ON events(posting_id, event_type);
+CREATE INDEX IF NOT EXISTS idx_events_type_created ON events(event_type, created_at);
+CREATE INDEX IF NOT EXISTS idx_matches_applicant ON matches(applicant_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_matches_posting_app ON matches(posting_id, applicant_id);
+CREATE INDEX IF NOT EXISTS idx_matches_created ON matches(created_at);
 """
 
 

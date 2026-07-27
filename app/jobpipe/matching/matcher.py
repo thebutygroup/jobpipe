@@ -206,6 +206,24 @@ def run(conn, profile: Profile, applicant_id: int, client=None, raw_yaml: str = 
         client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
     stats = {"considered": 0, "matched": 0, "rejected": 0, "failed": 0, "capped": 0,
              "tokens": 0, "secondary_held": 0}
+    # Cap check FIRST: an already-capped applicant must cost milliseconds, not
+    # the full pending query (all rows + descriptions + per-row subprobes).
+    # Counts are then maintained in memory — recounting the DB twice per
+    # posting was a real drag on the bind-mounted SQLite file.
+    per_user_cap = settings.match_daily_call_cap_per_user
+    global_count = calls_today(conn)
+    user_count = calls_today_for(conn, applicant_id)
+    if global_count >= settings.match_daily_call_cap:
+        stats["capped"] += 1
+        log.warning("GLOBAL daily match call cap reached (%d) — skipping "
+                    "applicant %d entirely", settings.match_daily_call_cap,
+                    applicant_id)
+        return stats
+    if per_user_cap > 0 and user_count >= per_user_cap:
+        stats["capped"] += 1
+        log.info("per-user daily cap already reached for applicant %d (%d) — "
+                 "skipping", applicant_id, per_user_cap)
+        return stats
     primary, secondary = order_pending(pending_postings(conn, applicant_id))
     pending = primary + secondary
     n_primary = len(primary)
@@ -215,7 +233,6 @@ def run(conn, profile: Profile, applicant_id: int, client=None, raw_yaml: str = 
         pending = pending[:settings.match_test_limit]
         log.info("TEST MODE: matcher limited to %d postings", len(pending))
     total = len(pending)
-    per_user_cap = settings.match_daily_call_cap_per_user
     for i, posting in enumerate(pending, 1):
         if (i > n_primary
                 and stats["matched"] >= settings.match_min_per_run):
@@ -225,12 +242,12 @@ def run(conn, profile: Profile, applicant_id: int, client=None, raw_yaml: str = 
             log.info("secondary sources held: %d postings (already %d matches "
                      "this run)", stats["secondary_held"], stats["matched"])
             break
-        if calls_today(conn) >= settings.match_daily_call_cap:
+        if global_count >= settings.match_daily_call_cap:
             stats["capped"] += 1
             log.warning("GLOBAL daily match call cap reached (%d)",
                         settings.match_daily_call_cap)
             break
-        if per_user_cap > 0 and calls_today_for(conn, applicant_id) >= per_user_cap:
+        if per_user_cap > 0 and user_count >= per_user_cap:
             stats["capped"] += 1
             log.info("per-user daily cap reached for applicant %d (%d) — "
                      "moving to next applicant", applicant_id, per_user_cap)
@@ -273,12 +290,14 @@ def run(conn, profile: Profile, applicant_id: int, client=None, raw_yaml: str = 
                 )
             log_event(conn, f"match:{state}", posting_id=posting["id"],
                       payload={"score": result.score})
+        global_count += 1
+        user_count += 1
         stats["matched" if state == MATCHED else "rejected"] += 1
         log.info("[%d/%d] %s/10 %-9s %s - %s  (%s tok, %s total, %s calls today)",
                  i, total, result.score,
                  "MATCHED" if state == MATCHED else "below-thr",
                  posting["company_name"], posting["title"][:60],
-                 tokens, stats["tokens"], calls_today(conn))
+                 tokens, stats["tokens"], global_count)
     return stats
 
 
