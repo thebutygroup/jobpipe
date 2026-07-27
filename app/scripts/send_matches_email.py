@@ -41,7 +41,8 @@ def main() -> None:
                 raise SystemExit(f"no applicant with user_ref {args.user!r}")
         else:
             rows = conn.execute(
-                "SELECT * FROM applicants WHERE active = 1 ORDER BY id").fetchall()
+                "SELECT * FROM applicants WHERE active = 1"
+                " AND COALESCE(shadow_banned, 0) = 0 ORDER BY id").fetchall()
         for row in rows:
             if args.dry_run:
                 matches = matches_mail.top_matches(conn, row["id"], args.limit)

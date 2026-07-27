@@ -423,6 +423,60 @@ def healthz(request):
     return HttpResponse("ok", content_type="text/plain")
 
 
+def profile_edit(request, user_ref: str, token: str):
+    """Self-serve profile view/edit behind a per-user secret token (emailed).
+    Structured fields with hard limits — never raw YAML. Injection-flagged
+    submissions shadow-ban and still render 'saved' (deliberately)."""
+    from .. import safety
+    from ..profile_edit import FORM_FIELDS, apply_fields, fields_from_row
+
+    conn = connect()
+    try:
+        row = conn.execute(
+            "SELECT * FROM applicants WHERE user_ref = ? AND edit_token = ?"
+            " AND edit_token IS NOT NULL AND edit_token != ''",
+            (user_ref, token)).fetchone()
+        if not row:
+            return HttpResponse("not found", status=404)
+        error = saved = ""
+        fields = fields_from_row(row)
+        if request.method == "POST":
+            submitted = {name: (request.POST.get(name) or "")
+                         for name, *_ in FORM_FIELDS}
+            flagged, reason = safety.screen_fields(submitted)
+            if flagged:
+                if not row["shadow_banned"]:
+                    safety.shadow_ban(conn, row["id"], user_ref, reason,
+                                      offending_text=str(submitted))
+                fields, saved = submitted, "yes"   # deliberate: looks saved
+            else:
+                try:
+                    from ..db import log_event
+                    new_yaml = apply_fields(row["profile_yaml"] or "", submitted)
+                    if row["shadow_banned"]:
+                        saved = "yes"              # pretend; never applied
+                    else:
+                        with tx(conn):
+                            conn.execute(
+                                "UPDATE applicants SET profile_yaml = ? WHERE id = ?",
+                                (new_yaml, row["id"]))
+                            log_event(conn, "profile_updated",
+                                      payload={"user_ref": user_ref})
+                        saved = "yes"
+                    fields = submitted
+                except Exception as e:  # ProfileError and friends
+                    error, fields = str(e), submitted
+        limits = safety.FIELD_LIMITS
+        form = [{"name": n, "label": lb, "kind": k, "ph": ph,
+                 "value": fields.get(n, ""), "limit": limits.get(n, 200)}
+                for n, lb, k, ph in FORM_FIELDS]
+    finally:
+        conn.close()
+    return render(request, "profile_edit.html",
+                  {"user_ref": user_ref, "form": form, "saved": saved,
+                   "error": error, "hide_internal_nav": True})
+
+
 @require_GET
 def health(request):
     """Pipeline health board. Private. One glance answers 'is everything

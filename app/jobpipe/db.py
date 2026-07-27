@@ -239,6 +239,13 @@ def connect(db_path: str | None = None) -> sqlite3.Connection:
         conn.execute("ALTER TABLE applicants ADD COLUMN profile_yaml TEXT")
     if "vault_token" not in acols:
         conn.execute("ALTER TABLE applicants ADD COLUMN vault_token TEXT")
+    if "edit_token" not in acols:
+        # secret in the profile-edit URL (emailed to the user; unguessable)
+        conn.execute("ALTER TABLE applicants ADD COLUMN edit_token TEXT")
+    if "shadow_banned" not in acols:
+        # 1 = pipeline silently ignores them (matching, searches, emails);
+        # their pages still render so nothing looks different from outside
+        conn.execute("ALTER TABLE applicants ADD COLUMN shadow_banned INTEGER NOT NULL DEFAULT 0")
     pcols = {r["name"] for r in conn.execute("PRAGMA table_info(postings)")}
     if "duplicate_of" not in pcols:
         conn.execute("ALTER TABLE postings ADD COLUMN duplicate_of INTEGER REFERENCES postings(id)")

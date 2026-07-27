@@ -350,7 +350,8 @@ def main() -> None:
         if not conn.execute("SELECT 1 FROM applicants LIMIT 1").fetchone():
             ensure_applicant(conn, load_profile(settings.profile_path))
         rows = conn.execute(
-            "SELECT * FROM applicants WHERE active = 1" +
+            "SELECT * FROM applicants WHERE active = 1"
+            " AND COALESCE(shadow_banned, 0) = 0" +
             (" AND id = ?" if only else ""), (only,) if only else ()).fetchall()
         if only and not rows:
             raise SystemExit(f"no active applicant with id {only}")

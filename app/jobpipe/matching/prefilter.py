@@ -74,6 +74,7 @@ def load_active_profiles(conn) -> list[tuple[str, Profile]]:
     profile on a fresh DB (mirrors matcher bootstrap)."""
     out: list[tuple[str, Profile]] = []
     for row in conn.execute("SELECT * FROM applicants WHERE active = 1"
+                            " AND COALESCE(shadow_banned, 0) = 0"
                             " ORDER BY id").fetchall():
         try:
             out.append((row["user_ref"] or row["name"], load_applicant_profile(row)))

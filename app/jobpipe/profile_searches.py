@@ -65,7 +65,8 @@ def derive_profile_searches(conn, existing: list[dict],
     derived: list[dict] = []
     dropped = 0
     rows = conn.execute(
-        "SELECT * FROM applicants WHERE active = 1 ORDER BY id").fetchall()
+        "SELECT * FROM applicants WHERE active = 1"
+        " AND COALESCE(shadow_banned, 0) = 0 ORDER BY id").fetchall()
     for row in rows:
         try:
             profile = load_applicant_profile(row)

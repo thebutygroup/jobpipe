@@ -171,6 +171,7 @@ def expand_all(conn, client=None) -> int:
         client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
     total = 0
     for row in conn.execute("SELECT * FROM applicants WHERE active = 1"
+                            " AND COALESCE(shadow_banned, 0) = 0"
                             " AND profile_yaml IS NOT NULL"
                             " AND profile_yaml != '' ORDER BY id").fetchall():
         total += expand_for_applicant(conn, row, client)
