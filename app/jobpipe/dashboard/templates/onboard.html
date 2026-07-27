@@ -20,8 +20,8 @@ b.disabled=true;b.textContent='Creating your page…';return true;}
   <div class="ob">
     <label>User name * <span>(letters, numbers, - or _ · becomes your page address)</span></label>
     <input name="full_name" value="{{ form.full_name }}" required maxlength="30" pattern="[A-Za-z0-9_-]{1,30}" placeholder="e.g. maya">
-    <label>The job title you want *</label>
-    <input name="target_titles" value="{{ form.target_titles }}" required placeholder="e.g. Senior Data Engineer — add more, comma-separated, if you like">
+    <label>The job titles you want * <span>(3–5 comma-separated titles get the best coverage — one very specific title is fine too, and we'll respect it)</span></label>
+    <input name="target_titles" value="{{ form.target_titles }}" required placeholder="e.g. Head of Data, Data Director, Analytics Lead">
     <label>What are you looking for? * <span>(one sentence is enough — this drives the matching)</span></label>
     <textarea name="positioning" rows="3" required placeholder="I'm a ... looking for ... What matters to me is ...">{{ form.positioning }}</textarea>
     <label>Email <span>(optional — only to tell you about new matches)</span></label>

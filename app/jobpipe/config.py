@@ -72,8 +72,13 @@ class Settings(BaseSettings):
     # One small model call per (changed) signup profile that expands their
     # target titles into the similar titles employers actually post — feeds
     # the prefilter so "Head of Data" also catches "Data Director".
+    # SCARCITY-GATED: if a person's literal titles already match plenty of
+    # open postings (>= title_expand_when_below), their specificity is
+    # respected and no expansion happens. Expansion kicks in only when the
+    # scrape leaves them thin.
     title_expand_enabled: bool = True
     title_expand_max: int = 8
+    title_expand_when_below: int = 20
     # Full off switch: never polled, never derived. Keys can stay in .env.
     disabled_sources: str = ""
 

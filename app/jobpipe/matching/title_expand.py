@@ -8,6 +8,11 @@ before the matcher ever sees them. The profile schema already carries
 preferences.title_synonyms; this step fills it automatically.
 
 Economics & safety:
+- SCARCITY-GATED: someone whose literal titles already match plenty of open
+  postings asked for something specific and gets exactly that — no
+  expansion. Only when the scrape leaves them thin (fewer than
+  TITLE_EXPAND_WHEN_BELOW open postings matching their own words) do we
+  widen. The signup form encourages 3-5 titles so most people never need it.
 - one call per profile, ONLY when titles/summary changed (fingerprint event)
 - DB-stored profiles only (signups). The owner's file profile is
   hand-maintained — never rewritten by a machine.
@@ -44,6 +49,24 @@ in their words: %(summary)s
 SEEKER>>>
 
 JSON only."""
+
+
+def literal_coverage(conn, titles: list[str]) -> int:
+    """How many OPEN postings match the person's own titles verbatim
+    (same substring rule the prefilter uses). Plenty => their specificity
+    is respected; thin => expansion kicks in."""
+    from ..models import normalise_title
+    wanted = [normalise_title(t) for t in titles if t.strip()]
+    if not wanted:
+        return 0
+    n = 0
+    for row in conn.execute(
+            "SELECT title FROM postings WHERE closed_at IS NULL"
+            " AND duplicate_of IS NULL").fetchall():
+        norm = normalise_title(row["title"])
+        if any(w and w in norm for w in wanted):
+            n += 1
+    return n
 
 
 def _fingerprint(titles: list[str], summary: str) -> str:
@@ -107,6 +130,14 @@ def expand_for_applicant(conn, row, client) -> int:
         if _already_expanded(conn, row["id"], key):
             return 0
         current = [str(s) for s in prefs.get("title_synonyms") or []]
+        # scarcity gate: their own words already cover plenty? respect them.
+        # (cheap check, no fingerprint recorded — coverage changes as the
+        # pond grows, so a thin profile is re-checked every prefilter run)
+        coverage = literal_coverage(conn, titles + current)
+        if coverage >= settings.title_expand_when_below:
+            log.info("title expansion skipped for %s: %d open postings already "
+                     "match their own titles", row["user_ref"], coverage)
+            return 0
         added = expand_titles(client, titles + current, summary,
                               cap=settings.title_expand_max)
         # record the attempt even when nothing was added, so an unchanged

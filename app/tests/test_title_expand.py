@@ -90,3 +90,28 @@ def test_expand_all_skips_file_profiles_and_missing_key(conn, monkeypatch):
     assert title_expand.expand_all(conn) == 0  # no key: silent no-op
     _add(conn, "maria", ["Photographer"])
     assert title_expand.expand_all(conn, client=FakeClient(["Retoucher"])) == 1
+
+
+def test_scarcity_gate_respects_specific_titles_with_coverage(conn, monkeypatch):
+    """Plenty of open postings matching their literal titles => no expansion
+    (no model call). Thin coverage => expansion proceeds."""
+    from jobpipe.config import settings
+    from jobpipe.db import upsert_posting
+    from jobpipe.models import PostingDTO
+
+    monkeypatch.setattr(settings, "title_expand_when_below", 3)
+    row = _add(conn, "specific", ["Platform Engineer"])
+    for i in range(3):
+        upsert_posting(conn, PostingDTO(
+            company_name=f"C{i}", source="ats", external_id=f"pe{i}",
+            title=f"Senior Platform Engineer {i}", location="London",
+            apply_url=f"https://boards.greenhouse.io/c{i}/{i}",
+            description_text="d"))
+    conn.commit()
+    client = FakeClient(["Infrastructure Engineer"])
+    assert title_expand.expand_for_applicant(conn, row, client) == 0
+    assert client.calls == 0  # respected: no model call at all
+    # raise the bar so coverage is now "thin" -> expansion happens
+    monkeypatch.setattr(settings, "title_expand_when_below", 10)
+    assert title_expand.expand_for_applicant(conn, row, client) == 1
+    assert client.calls == 1
