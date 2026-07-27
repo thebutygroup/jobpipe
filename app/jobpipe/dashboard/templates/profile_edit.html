@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}your matching profile — jobpipe{% endblock %}
+{% block content %}
+<h1>Your matching profile</h1>
+<p class="meta" style="max-width:560px">This is everything the matcher knows
+about you. The richer it is, the sharper your matches — <b>titles</b> decide
+which jobs you're compared against at all, and the rest decides the score.
+Saves take effect from the next matching run.</p>
+
+{% if saved %}<div class="card" style="border-left:4px solid var(--good)">
+  <strong class="good">✓ Saved.</strong> <span class="meta">Your next matching
+  run uses the updated profile.</span></div>{% endif %}
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+<form method="post" class="card">{% csrf_token %}
+  <style>.pe label{display:block;margin:14px 0 4px;font-size:13px;color:var(--ink-soft)}
+  .pe input,.pe textarea{width:100%;max-width:560px}
+  .pe .count{font-size:11px;color:var(--ink-soft)}</style>
+  <div class="pe">
+  {% for f in form %}
+    <label>{{ f.label }} <span class="count">(max {{ f.limit }} characters)</span></label>
+    {% if f.kind == "textarea" %}
+    <textarea name="{{ f.name }}" rows="4" maxlength="{{ f.limit }}"
+      placeholder="{{ f.ph }}">{{ f.value }}</textarea>
+    {% else %}
+    <input name="{{ f.name }}" value="{{ f.value }}" maxlength="{{ f.limit }}"
+      placeholder="{{ f.ph }}">
+    {% endif %}
+  {% endfor %}
+  </div>
+  <p><button type="submit">Save profile</button></p>
+  <p class="meta">Plain text only — describe yourself the way you'd tell a
+  recruiter. Keep this page's address private: anyone with the link can edit
+  your profile.</p>
+</form>
+{% endblock %}

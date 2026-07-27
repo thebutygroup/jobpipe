@@ -20,27 +20,36 @@ the same job scores differently for each user, so compare within one user, not a
   {% endif %}
   <input name="q" value="{{ q }}" placeholder="title contains…" style="width:180px">
   <input name="min_score" value="{{ min_score }}" placeholder="min" style="width:56px" title="minimum score">
+  <select name="source" title="job board">
+    <option value="">any board</option>
+    {% for o in source_opts %}
+    <option value="{{ o.value }}" {% if source_sel == o.value %}selected{% endif %}>only {{ o.label }}</option>
+    {% endfor %}
+    {% for o in source_opts %}
+    <option value="-{{ o.value }}" {% if source_sel == "-"|add:o.value %}selected{% endif %}>hide {{ o.label }}</option>
+    {% endfor %}
+  </select>
   <input type="hidden" name="sort" value="{{ sort }}">
   <button type="submit">filter</button>
-  {% if q or min_score or user %}<a href="{{ base_path }}">clear</a>{% endif %}
+  {% if q or min_score or user or source_sel %}<a href="{{ base_path }}">clear</a>{% endif %}
   <span class="meta">sort:
     {% if public_user_ref %}
-    <a href="?q={{ q|urlencode }}&min_score={{ min_score }}&sort=score" {% if sort == "score" %}class="on"{% endif %}>score</a>
-    <a href="?q={{ q|urlencode }}&min_score={{ min_score }}&sort=title" {% if sort == "title" %}class="on"{% endif %}>title</a>
-    <a href="?q={{ q|urlencode }}&min_score={{ min_score }}&sort=company" {% if sort == "company" %}class="on"{% endif %}>company</a>
-    <a href="?q={{ q|urlencode }}&min_score={{ min_score }}&sort=newest" {% if sort == "newest" %}class="on"{% endif %}>newest</a>
+    <a href="?q={{ q|urlencode }}&min_score={{ min_score }}&source={{ source_sel|urlencode }}&sort=score" {% if sort == "score" %}class="on"{% endif %}>score</a>
+    <a href="?q={{ q|urlencode }}&min_score={{ min_score }}&source={{ source_sel|urlencode }}&sort=title" {% if sort == "title" %}class="on"{% endif %}>title</a>
+    <a href="?q={{ q|urlencode }}&min_score={{ min_score }}&source={{ source_sel|urlencode }}&sort=company" {% if sort == "company" %}class="on"{% endif %}>company</a>
+    <a href="?q={{ q|urlencode }}&min_score={{ min_score }}&source={{ source_sel|urlencode }}&sort=newest" {% if sort == "newest" %}class="on"{% endif %}>newest</a>
     {% else %}
-    <a href="?user={{ user }}&q={{ q|urlencode }}&min_score={{ min_score }}&sort=score" {% if sort == "score" %}class="on"{% endif %}>score</a>
-    <a href="?user={{ user }}&q={{ q|urlencode }}&min_score={{ min_score }}&sort=title" {% if sort == "title" %}class="on"{% endif %}>title</a>
-    <a href="?user={{ user }}&q={{ q|urlencode }}&min_score={{ min_score }}&sort=company" {% if sort == "company" %}class="on"{% endif %}>company</a>
-    <a href="?user={{ user }}&q={{ q|urlencode }}&min_score={{ min_score }}&sort=newest" {% if sort == "newest" %}class="on"{% endif %}>newest</a>
+    <a href="?user={{ user }}&q={{ q|urlencode }}&min_score={{ min_score }}&source={{ source_sel|urlencode }}&sort=score" {% if sort == "score" %}class="on"{% endif %}>score</a>
+    <a href="?user={{ user }}&q={{ q|urlencode }}&min_score={{ min_score }}&source={{ source_sel|urlencode }}&sort=title" {% if sort == "title" %}class="on"{% endif %}>title</a>
+    <a href="?user={{ user }}&q={{ q|urlencode }}&min_score={{ min_score }}&source={{ source_sel|urlencode }}&sort=company" {% if sort == "company" %}class="on"{% endif %}>company</a>
+    <a href="?user={{ user }}&q={{ q|urlencode }}&min_score={{ min_score }}&source={{ source_sel|urlencode }}&sort=newest" {% if sort == "newest" %}class="on"{% endif %}>newest</a>
     {% endif %}
   </span>
 </form>
 
 {% if rows %}
 <table class="tbl">
-  <thead><tr><th>date</th><th>company</th><th>title</th><th>salary</th><th>score</th>{% if not public_user_ref %}<th>user</th>{% endif %}<th></th></tr></thead>
+  <thead><tr><th>date</th><th>company</th><th>title</th><th>board</th><th>salary</th><th>score</th>{% if not public_user_ref %}<th>user</th>{% endif %}<th></th></tr></thead>
   <tbody>
   {% for r in rows %}
   <tr>
@@ -51,6 +60,7 @@ the same job scores differently for each user, so compare within one user, not a
     {% else %}
     <td data-l="title"><a href="/app/{{ r.id }}" class="plain">{{ r.title }}</a></td>
     {% endif %}
+    <td data-l="board"><span class="pill" style="font-size:11.5px">{{ r.source_label|default:"—" }}</span></td>
     <td data-l="salary">{{ r.salary|default:"—" }}</td>
     <td data-l="score">{% if r.score != None %}<span class="score s{{ r.score }}">{{ r.score }}</span>{% else %}—{% endif %}</td>
     {% if not public_user_ref %}

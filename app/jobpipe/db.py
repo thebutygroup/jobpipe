@@ -158,6 +158,14 @@ CREATE INDEX IF NOT EXISTS idx_postings_hash ON postings(content_hash);
 CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at);
 CREATE INDEX IF NOT EXISTS idx_sp_posting ON source_postings(posting_id);
 CREATE INDEX IF NOT EXISTS idx_sp_source_ext ON source_postings(source, external_id);
+-- hot-path indexes (added after the matcher grew per-posting cap checks and
+-- per-posting EXISTS probes into events/matches; without these every probe is
+-- a full scan — brutal on a Windows-bind-mounted SQLite file):
+CREATE INDEX IF NOT EXISTS idx_events_posting_type ON events(posting_id, event_type);
+CREATE INDEX IF NOT EXISTS idx_events_type_created ON events(event_type, created_at);
+CREATE INDEX IF NOT EXISTS idx_matches_applicant ON matches(applicant_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_matches_posting_app ON matches(posting_id, applicant_id);
+CREATE INDEX IF NOT EXISTS idx_matches_created ON matches(created_at);
 """
 
 
@@ -231,6 +239,13 @@ def connect(db_path: str | None = None) -> sqlite3.Connection:
         conn.execute("ALTER TABLE applicants ADD COLUMN profile_yaml TEXT")
     if "vault_token" not in acols:
         conn.execute("ALTER TABLE applicants ADD COLUMN vault_token TEXT")
+    if "edit_token" not in acols:
+        # secret in the profile-edit URL (emailed to the user; unguessable)
+        conn.execute("ALTER TABLE applicants ADD COLUMN edit_token TEXT")
+    if "shadow_banned" not in acols:
+        # 1 = pipeline silently ignores them (matching, searches, emails);
+        # their pages still render so nothing looks different from outside
+        conn.execute("ALTER TABLE applicants ADD COLUMN shadow_banned INTEGER NOT NULL DEFAULT 0")
     pcols = {r["name"] for r in conn.execute("PRAGMA table_info(postings)")}
     if "duplicate_of" not in pcols:
         conn.execute("ALTER TABLE postings ADD COLUMN duplicate_of INTEGER REFERENCES postings(id)")

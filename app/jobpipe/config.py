@@ -57,12 +57,43 @@ class Settings(BaseSettings):
     aggregator_max_pages: int = 2          # pages per search per run
     adzuna_daily_call_cap: int = 100       # free tier ~250/day; stay well under
 
+    # ---- source tiers & profile-driven searches ----
+    # Searches derived from every ACTIVE applicant's target titles, on the
+    # sources that take arbitrary queries (builtin, adzuna, reed). Without
+    # this, new users are scored against a pond fetched for the owner's titles.
+    profile_searches_enabled: bool = True
+    profile_searches_cap: int = 30
+    # Tier 2 ("secondary") sources are still polled — their sightings help
+    # dedupe/cross-linking — but the matcher only spends calls on their
+    # postings when tier-1 sources leave an applicant short of
+    # match_min_per_run matches. For noisy boards.
+    secondary_sources: str = "adzuna"
+    match_min_per_run: int = 5
+    # One small model call per (changed) signup profile that expands their
+    # target titles into the similar titles employers actually post — feeds
+    # the prefilter so "Head of Data" also catches "Data Director".
+    # SCARCITY-GATED: if a person's literal titles already match plenty of
+    # open postings (>= title_expand_when_below), their specificity is
+    # respected and no expansion happens. Expansion kicks in only when the
+    # scrape leaves them thin.
+    title_expand_enabled: bool = True
+    title_expand_max: int = 8
+    title_expand_when_below: int = 20
+    # Full off switch: never polled, never derived. Keys can stay in .env.
+    disabled_sources: str = ""
+
     # ---- self-serve signup ----
     signup_daily_cap: int = 3        # auto-activated signups per day; beyond -> pending + flag
     signup_instant_matches: int = 20  # postings scored immediately for a new signup
 
     match_threshold: int = 7
-    match_daily_call_cap: int = 200
+    # Two caps, checked in order. GLOBAL = the hard spend ceiling for the whole
+    # day. PER-USER = fairness: nobody can eat the global budget before later
+    # applicants get their turn (the first multi-user day proved this: one
+    # applicant consumed all 200 calls, three signups got zero). 0 disables
+    # the per-user cap.
+    match_daily_call_cap: int = 400
+    match_daily_call_cap_per_user: int = 50
     match_test_limit: int = 0        # >0 caps matcher to N postings (testing)
     poll_test_limit: int = 0         # >0 caps each poller to N postings (testing)
     builtin_max_pages: int = 30      # result pages walked per Built In saved search

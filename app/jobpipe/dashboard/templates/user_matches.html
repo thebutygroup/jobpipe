@@ -18,7 +18,7 @@
   <div class="card">
     <div class="top"><h2><a href="https://www.google.com/search?q={{ a.company|urlencode }}" target="_blank" rel="noopener" title="Google this company">{{ a.company }}</a> — <a href="/job_matches/{{ user_ref }}/{{ a.posting_id }}" style="color:inherit;text-decoration:none">{{ a.title }}</a></h2>
       <span class="score">{{ a.score }}/10</span></div>
-    <div class="meta">{{ a.location }} · state {{ a.state }}</div>
+    <div class="meta">{{ a.location }} · state {{ a.state }}{% if a.source_label %} · <span class="pill" style="font-size:11px">via {{ a.source_label }}</span>{% endif %}</div>
     {% if a.highlights or a.reasons %}
     <div class="meta" style="text-transform:uppercase;letter-spacing:.05em;font-size:11px;margin-top:6px">why this matched you</div>
     {% if a.highlights %}<ul>{% for h in a.highlights %}<li class="good">✓ {{ h }}</li>{% endfor %}</ul>{% endif %}
@@ -29,5 +29,29 @@
   {% endfor %}
 {% else %}
   <div class="empty">No matches for this user.</div>
+{% endif %}
+
+{% if near %}
+<details class="card" style="margin-top:18px">
+  <summary style="cursor:pointer;color:var(--accent-deep);font-weight:600">
+    Near misses — {{ near|length }} job{{ near|length|pluralize }} that scored 4–6</summary>
+  <p class="meta">Close, but the matcher wasn't convinced. Worth a skim if the
+  list above runs dry — and if several of these look right to you, reply to
+  your profile email: sharpening your profile moves jobs like these up.</p>
+  <table class="tbl">
+    <thead><tr><th>score</th><th>company</th><th>title</th><th>board</th><th></th></tr></thead>
+    <tbody>
+    {% for n in near %}
+      <tr>
+        <td data-l="score"><span class="score s{{ n.score }}">{{ n.score }}</span></td>
+        <td data-l="company">{{ n.company }}</td>
+        <td data-l="title">{{ n.title }}</td>
+        <td data-l="board"><span class="pill" style="font-size:11px">{{ n.source_label }}</span></td>
+        <td data-l="">{% if n.listing_url %}<a href="{{ n.listing_url }}" target="_blank" rel="noopener">↗</a>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</details>
 {% endif %}
 {% endblock %}

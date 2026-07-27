@@ -15,9 +15,11 @@ import re
 
 from pydantic import BaseModel, Field, ValidationError
 
+from .. import health
 from ..config import settings
 from ..db import connect, heartbeat, log_event, now, tx
 from ..models import MATCHED, REJECTED_AUTO
+from ..notify import send_failure
 from ..profile import Profile, load_applicant_profile, load_profile
 
 log = logging.getLogger(__name__)
@@ -95,7 +97,8 @@ def parse_response(text: str) -> MatchResult:
     return MatchResult.model_validate(json.loads(cleaned))
 
 
-def call_model(client, profile: Profile, posting, raw_yaml: str = "") -> tuple[MatchResult, int]:
+def call_model(client, profile: Profile, posting, raw_yaml: str = "",
+               model: str | None = None) -> tuple[MatchResult, int]:
     prompt = PROMPT.format(
         profile_summary=profile_summary(profile, raw_yaml),
         target_titles=", ".join(profile.preferences.target_titles),
@@ -106,7 +109,7 @@ def call_model(client, profile: Profile, posting, raw_yaml: str = "") -> tuple[M
         description=(posting["description_text"] or "")[:6000],
     )
     resp = client.messages.create(
-        model=settings.match_model, max_tokens=600, temperature=0,
+        model=model or settings.match_model, max_tokens=600, temperature=0,
         messages=[{"role": "user", "content": prompt}],
     )
     text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
@@ -115,8 +118,19 @@ def call_model(client, profile: Profile, posting, raw_yaml: str = "") -> tuple[M
 
 
 def calls_today(conn) -> int:
+    """Successful model calls today across ALL applicants (global spend ceiling)."""
     row = conn.execute(
         "SELECT COUNT(*) AS n FROM matches WHERE created_at >= date('now')").fetchone()
+    return row["n"]
+
+
+def calls_today_for(conn, applicant_id: int) -> int:
+    """Successful model calls today for ONE applicant (fairness cap). Without
+    this, whoever matches first eats the whole global cap and everyone after
+    them gets zero — exactly what happened the day users 2-4 signed up."""
+    row = conn.execute(
+        "SELECT COUNT(*) AS n FROM matches WHERE created_at >= date('now')"
+        " AND applicant_id = ?", (applicant_id,)).fetchone()
     return row["n"]
 
 
@@ -126,7 +140,7 @@ def pending_postings(conn, applicant_id: int) -> list:
     pending for every other."""
     return conn.execute(
         "SELECT p.id, p.title, p.location, p.description_text, p.content_hash, "
-        "       c.name AS company_name "
+        "       p.source, c.name AS company_name "
         "FROM postings p JOIN companies c ON c.id = p.company_id "
         "WHERE p.closed_at IS NULL AND p.duplicate_of IS NULL "
         "AND EXISTS (SELECT 1 FROM events e WHERE e.posting_id = p.id "
@@ -136,6 +150,39 @@ def pending_postings(conn, applicant_id: int) -> list:
         "                AND p2.content_hash = p.content_hash) "
         "ORDER BY p.first_seen_at DESC", (applicant_id,)
     ).fetchall()
+
+
+def secondary_source_set() -> set[str]:
+    return {s.strip().lower() for s in settings.secondary_sources.split(",")
+            if s.strip()}
+
+
+def interleave_by_source(rows: list) -> list:
+    """Round-robin across sources, preserving newest-first within each source.
+    A high-volume board can no longer flood the front of the queue: every
+    source's best gets scored before any source's hundredth."""
+    groups: dict[str, list] = {}
+    for r in rows:
+        groups.setdefault(r["source"], []).append(r)
+    out, i = [], 0
+    while len(out) < len(rows):
+        for source in groups:
+            if i < len(groups[source]):
+                out.append(groups[source][i])
+        i += 1
+    return out
+
+
+def order_pending(pending: list) -> tuple[list, list]:
+    """(primary, secondary): tier-1 sources interleaved fairly, tier-2
+    (noisy boards, SECONDARY_SOURCES) held back — scored only if tier 1
+    leaves the applicant short of MATCH_MIN_PER_RUN matches."""
+    secondary_set = secondary_source_set()
+    primary = interleave_by_source([p for p in pending
+                                    if p["source"] not in secondary_set])
+    secondary = interleave_by_source([p for p in pending
+                                      if p["source"] in secondary_set])
+    return primary, secondary
 
 
 def ensure_applicant(conn, profile: Profile) -> int:
@@ -159,8 +206,45 @@ def run(conn, profile: Profile, applicant_id: int, client=None, raw_yaml: str = 
 
         client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
     stats = {"considered": 0, "matched": 0, "rejected": 0, "failed": 0, "capped": 0,
-             "tokens": 0}
-    pending = pending_postings(conn, applicant_id)
+             "tokens": 0, "secondary_held": 0}
+    # Cap check FIRST: an already-capped applicant must cost milliseconds, not
+    # the full pending query (all rows + descriptions + per-row subprobes).
+    # Counts are then maintained in memory — recounting the DB twice per
+    # posting was a real drag on the bind-mounted SQLite file.
+    per_user_cap = settings.match_daily_call_cap_per_user
+    global_count = calls_today(conn)
+    user_count = calls_today_for(conn, applicant_id)
+    if global_count >= settings.match_daily_call_cap:
+        stats["capped"] += 1
+        log.warning("GLOBAL daily match call cap reached (%d) — skipping "
+                    "applicant %d entirely", settings.match_daily_call_cap,
+                    applicant_id)
+        return stats
+    if per_user_cap > 0 and user_count >= per_user_cap:
+        stats["capped"] += 1
+        log.info("per-user daily cap already reached for applicant %d (%d) — "
+                 "skipping", applicant_id, per_user_cap)
+        return stats
+    # PER-APPLICANT relevance gate: the shared prefilter passes anything
+    # relevant to ANY active profile (that's what fills the pond for
+    # everyone), but THIS applicant's model calls are spent only on postings
+    # that pass THEIR OWN title/location rules. Free (in-memory substring
+    # checks); skipped postings simply stay pending and cost nothing.
+    from .prefilter import classify
+    pending, skipped = [], 0
+    for p in pending_postings(conn, applicant_id):
+        state, _ = classify(p["title"], p["location"] or "", profile)
+        if state == "PREFILTERED":
+            pending.append(p)
+        else:
+            skipped += 1
+    stats["irrelevant_skipped"] = skipped
+    if skipped:
+        log.info("applicant %d: %d pending postings irrelevant to their "
+                 "profile — skipped free of charge", applicant_id, skipped)
+    primary, secondary = order_pending(pending)
+    pending = primary + secondary
+    n_primary = len(primary)
     if max_postings > 0:
         pending = pending[:max_postings]
     if settings.match_test_limit > 0:
@@ -168,9 +252,23 @@ def run(conn, profile: Profile, applicant_id: int, client=None, raw_yaml: str = 
         log.info("TEST MODE: matcher limited to %d postings", len(pending))
     total = len(pending)
     for i, posting in enumerate(pending, 1):
-        if calls_today(conn) >= settings.match_daily_call_cap:
+        if (i > n_primary
+                and stats["matched"] >= settings.match_min_per_run):
+            # tier-2 territory and tier 1 already produced enough — hold the
+            # noisy boards' postings for a leaner day.
+            stats["secondary_held"] = len(pending) - i + 1
+            log.info("secondary sources held: %d postings (already %d matches "
+                     "this run)", stats["secondary_held"], stats["matched"])
+            break
+        if global_count >= settings.match_daily_call_cap:
             stats["capped"] += 1
-            log.warning("daily match call cap reached (%d)", settings.match_daily_call_cap)
+            log.warning("GLOBAL daily match call cap reached (%d)",
+                        settings.match_daily_call_cap)
+            break
+        if per_user_cap > 0 and user_count >= per_user_cap:
+            stats["capped"] += 1
+            log.info("per-user daily cap reached for applicant %d (%d) — "
+                     "moving to next applicant", applicant_id, per_user_cap)
             break
         stats["considered"] += 1
         result, tokens = None, 0
@@ -210,13 +308,32 @@ def run(conn, profile: Profile, applicant_id: int, client=None, raw_yaml: str = 
                 )
             log_event(conn, f"match:{state}", posting_id=posting["id"],
                       payload={"score": result.score})
+        global_count += 1
+        user_count += 1
         stats["matched" if state == MATCHED else "rejected"] += 1
         log.info("[%d/%d] %s/10 %-9s %s - %s  (%s tok, %s total, %s calls today)",
                  i, total, result.score,
                  "MATCHED" if state == MATCHED else "below-thr",
                  posting["company_name"], posting["title"][:60],
-                 tokens, stats["tokens"], calls_today(conn))
+                 tokens, stats["tokens"], global_count)
     return stats
+
+
+def finish_run(conn, all_stats: dict) -> None:
+    """Record the run's heartbeat honestly. A run where EVERY model call fails
+    (invalid API key, network dead) still reaches this line because per-posting
+    errors are caught — that is NOT ok: beat red and email, don't let the
+    failure hide inside the detail string (it did once, for four days)."""
+    all_failed, n_considered = health.all_calls_failed(all_stats)
+    heartbeat(conn, "match", ok=not all_failed, detail=str(all_stats))
+    if all_failed:
+        send_failure(
+            "match",
+            f"matcher run completed but ALL {n_considered} model calls failed "
+            f"— zero matches produced. Most likely causes: invalid "
+            f"ANTHROPIC_API_KEY, no network egress, or a model-name typo. "
+            f"Check: docker compose logs jobpipe-scheduler | "
+            f"Select-String anthropic\n\nstats: {all_stats}")
 
 
 def main() -> None:
@@ -234,7 +351,8 @@ def main() -> None:
         if not conn.execute("SELECT 1 FROM applicants LIMIT 1").fetchone():
             ensure_applicant(conn, load_profile(settings.profile_path))
         rows = conn.execute(
-            "SELECT * FROM applicants WHERE active = 1" +
+            "SELECT * FROM applicants WHERE active = 1"
+            " AND COALESCE(shadow_banned, 0) = 0" +
             (" AND id = ?" if only else ""), (only,) if only else ()).fetchall()
         if only and not rows:
             raise SystemExit(f"no active applicant with id {only}")
@@ -250,9 +368,8 @@ def main() -> None:
                     raw_yaml = ""
             log.info("=== matching for %s (applicant %d) ===", row["name"], row["id"])
             all_stats[row["name"]] = run(conn, profile, row["id"], raw_yaml=raw_yaml)
-        stats = all_stats
-        heartbeat(conn, "match", ok=True, detail=str(stats))
-        log.info("match complete: %s", stats)
+        finish_run(conn, all_stats)
+        log.info("match complete: %s", all_stats)
     except Exception as e:
         heartbeat(conn, "match", ok=False, detail=str(e))
         raise
