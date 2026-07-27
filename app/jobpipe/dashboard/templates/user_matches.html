@@ -30,4 +30,28 @@
 {% else %}
   <div class="empty">No matches for this user.</div>
 {% endif %}
+
+{% if near %}
+<details class="card" style="margin-top:18px">
+  <summary style="cursor:pointer;color:var(--accent-deep);font-weight:600">
+    Near misses — {{ near|length }} job{{ near|length|pluralize }} that scored 4–6</summary>
+  <p class="meta">Close, but the matcher wasn't convinced. Worth a skim if the
+  list above runs dry — and if several of these look right to you, reply to
+  your profile email: sharpening your profile moves jobs like these up.</p>
+  <table class="tbl">
+    <thead><tr><th>score</th><th>company</th><th>title</th><th>board</th><th></th></tr></thead>
+    <tbody>
+    {% for n in near %}
+      <tr>
+        <td data-l="score"><span class="score s{{ n.score }}">{{ n.score }}</span></td>
+        <td data-l="company">{{ n.company }}</td>
+        <td data-l="title">{{ n.title }}</td>
+        <td data-l="board"><span class="pill" style="font-size:11px">{{ n.source_label }}</span></td>
+        <td data-l="">{% if n.listing_url %}<a href="{{ n.listing_url }}" target="_blank" rel="noopener">↗</a>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</details>
+{% endif %}
 {% endblock %}

@@ -97,7 +97,8 @@ def parse_response(text: str) -> MatchResult:
     return MatchResult.model_validate(json.loads(cleaned))
 
 
-def call_model(client, profile: Profile, posting, raw_yaml: str = "") -> tuple[MatchResult, int]:
+def call_model(client, profile: Profile, posting, raw_yaml: str = "",
+               model: str | None = None) -> tuple[MatchResult, int]:
     prompt = PROMPT.format(
         profile_summary=profile_summary(profile, raw_yaml),
         target_titles=", ".join(profile.preferences.target_titles),
@@ -108,7 +109,7 @@ def call_model(client, profile: Profile, posting, raw_yaml: str = "") -> tuple[M
         description=(posting["description_text"] or "")[:6000],
     )
     resp = client.messages.create(
-        model=settings.match_model, max_tokens=600, temperature=0,
+        model=model or settings.match_model, max_tokens=600, temperature=0,
         messages=[{"role": "user", "content": prompt}],
     )
     text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")

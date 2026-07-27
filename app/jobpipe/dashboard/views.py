@@ -233,9 +233,24 @@ def user_matches(request, user_ref: str):
         a["reasons"] = json.loads(a.get("reasons_json") or "[]")
         a["highlights"] = json.loads(a.get("highlights_json") or "[]")
         a["source_label"] = SOURCE_LABELS.get(a.get("source"), a.get("source") or "")
+    # Near misses: scored 4-6, so no application/card — shown collapsed at the
+    # bottom for people who want to look further down the list. Low scores
+    # (<=3) stay out of the way entirely.
+    near = _rows(
+        "SELECT c.name AS company, p.title, p.location, p.source,"
+        "       COALESCE(p.canonical_apply_url, p.apply_url) AS listing_url,"
+        "       MAX(m.score) AS score"
+        " FROM matches m JOIN postings p ON p.id = m.posting_id"
+        " JOIN companies c ON c.id = p.company_id"
+        " JOIN applicants ap ON ap.id = m.applicant_id"
+        " WHERE ap.user_ref = ? AND p.closed_at IS NULL"
+        " GROUP BY p.id HAVING MAX(m.score) BETWEEN 4 AND 6"
+        " ORDER BY score DESC, MAX(m.created_at) DESC LIMIT 40", (user_ref,))
+    for nm in near:
+        nm["source_label"] = SOURCE_LABELS.get(nm.get("source"), nm.get("source") or "")
     return render(request, "user_matches.html",
-                  {"rows": rows, "user_ref": user_ref, "q": q, "sort": sort,
-                   "hide_internal_nav": True})
+                  {"rows": rows, "near": near, "user_ref": user_ref, "q": q,
+                   "sort": sort, "hide_internal_nav": True})
 
 
 @require_GET

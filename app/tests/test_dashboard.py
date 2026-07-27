@@ -345,3 +345,24 @@ def test_all_source_badge_and_filter(conn, monkeypatch):
     assert b"SpamCo" not in r.content and b"Acme" in r.content
     r = client.get("/all", {"source": "adzuna"})
     assert b"SpamCo" in r.content and b"Acme" not in r.content
+
+
+def test_near_misses_collapsed_on_match_page(conn, monkeypatch):
+    """Scores 4-6 appear in the collapsed near-miss section; <=3 stay out."""
+    _point_db(monkeypatch, conn)
+    conn.execute("INSERT INTO applicants (name, user_ref, profile_path)"
+                 " VALUES ('T','tuser','p')")
+    for title, score in (("Almost Right Role", 5), ("Terrible Role", 2)):
+        pid, _ = upsert_posting(conn, PostingDTO(
+            company_name=f"Co-{score}", source="ats", external_id=title,
+            title=title, location="London",
+            apply_url=f"https://boards.greenhouse.io/x/{score}",
+            description_text="d"))
+        conn.execute("INSERT INTO matches (posting_id, applicant_id, score,"
+                     " reasons_json, model, tokens_used, created_at)"
+                     " VALUES (?,1,?,'[]','m',1,datetime('now'))", (pid, score))
+    conn.commit()
+    r = Client().get("/job_matches/tuser")
+    assert b"Near misses" in r.content
+    assert b"Almost Right Role" in r.content
+    assert b"Terrible Role" not in r.content
