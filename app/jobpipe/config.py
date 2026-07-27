@@ -57,6 +57,21 @@ class Settings(BaseSettings):
     aggregator_max_pages: int = 2          # pages per search per run
     adzuna_daily_call_cap: int = 100       # free tier ~250/day; stay well under
 
+    # ---- source tiers & profile-driven searches ----
+    # Searches derived from every ACTIVE applicant's target titles, on the
+    # sources that take arbitrary queries (builtin, adzuna, reed). Without
+    # this, new users are scored against a pond fetched for the owner's titles.
+    profile_searches_enabled: bool = True
+    profile_searches_cap: int = 30
+    # Tier 2 ("secondary") sources are still polled — their sightings help
+    # dedupe/cross-linking — but the matcher only spends calls on their
+    # postings when tier-1 sources leave an applicant short of
+    # match_min_per_run matches. For noisy boards.
+    secondary_sources: str = "adzuna"
+    match_min_per_run: int = 5
+    # Full off switch: never polled, never derived. Keys can stay in .env.
+    disabled_sources: str = ""
+
     # ---- self-serve signup ----
     signup_daily_cap: int = 3        # auto-activated signups per day; beyond -> pending + flag
     signup_instant_matches: int = 20  # postings scored immediately for a new signup

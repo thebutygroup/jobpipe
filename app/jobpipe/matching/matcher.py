@@ -139,7 +139,7 @@ def pending_postings(conn, applicant_id: int) -> list:
     pending for every other."""
     return conn.execute(
         "SELECT p.id, p.title, p.location, p.description_text, p.content_hash, "
-        "       c.name AS company_name "
+        "       p.source, c.name AS company_name "
         "FROM postings p JOIN companies c ON c.id = p.company_id "
         "WHERE p.closed_at IS NULL AND p.duplicate_of IS NULL "
         "AND EXISTS (SELECT 1 FROM events e WHERE e.posting_id = p.id "
@@ -149,6 +149,39 @@ def pending_postings(conn, applicant_id: int) -> list:
         "                AND p2.content_hash = p.content_hash) "
         "ORDER BY p.first_seen_at DESC", (applicant_id,)
     ).fetchall()
+
+
+def secondary_source_set() -> set[str]:
+    return {s.strip().lower() for s in settings.secondary_sources.split(",")
+            if s.strip()}
+
+
+def interleave_by_source(rows: list) -> list:
+    """Round-robin across sources, preserving newest-first within each source.
+    A high-volume board can no longer flood the front of the queue: every
+    source's best gets scored before any source's hundredth."""
+    groups: dict[str, list] = {}
+    for r in rows:
+        groups.setdefault(r["source"], []).append(r)
+    out, i = [], 0
+    while len(out) < len(rows):
+        for source in groups:
+            if i < len(groups[source]):
+                out.append(groups[source][i])
+        i += 1
+    return out
+
+
+def order_pending(pending: list) -> tuple[list, list]:
+    """(primary, secondary): tier-1 sources interleaved fairly, tier-2
+    (noisy boards, SECONDARY_SOURCES) held back — scored only if tier 1
+    leaves the applicant short of MATCH_MIN_PER_RUN matches."""
+    secondary_set = secondary_source_set()
+    primary = interleave_by_source([p for p in pending
+                                    if p["source"] not in secondary_set])
+    secondary = interleave_by_source([p for p in pending
+                                      if p["source"] in secondary_set])
+    return primary, secondary
 
 
 def ensure_applicant(conn, profile: Profile) -> int:
@@ -172,8 +205,10 @@ def run(conn, profile: Profile, applicant_id: int, client=None, raw_yaml: str = 
 
         client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
     stats = {"considered": 0, "matched": 0, "rejected": 0, "failed": 0, "capped": 0,
-             "tokens": 0}
-    pending = pending_postings(conn, applicant_id)
+             "tokens": 0, "secondary_held": 0}
+    primary, secondary = order_pending(pending_postings(conn, applicant_id))
+    pending = primary + secondary
+    n_primary = len(primary)
     if max_postings > 0:
         pending = pending[:max_postings]
     if settings.match_test_limit > 0:
@@ -182,6 +217,14 @@ def run(conn, profile: Profile, applicant_id: int, client=None, raw_yaml: str = 
     total = len(pending)
     per_user_cap = settings.match_daily_call_cap_per_user
     for i, posting in enumerate(pending, 1):
+        if (i > n_primary
+                and stats["matched"] >= settings.match_min_per_run):
+            # tier-2 territory and tier 1 already produced enough — hold the
+            # noisy boards' postings for a leaner day.
+            stats["secondary_held"] = len(pending) - i + 1
+            log.info("secondary sources held: %d postings (already %d matches "
+                     "this run)", stats["secondary_held"], stats["matched"])
+            break
         if calls_today(conn) >= settings.match_daily_call_cap:
             stats["capped"] += 1
             log.warning("GLOBAL daily match call cap reached (%d)",

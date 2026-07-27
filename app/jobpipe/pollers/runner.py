@@ -119,10 +119,16 @@ def run_aggregator_pollers(conn, searches: list[dict]) -> dict:
     by_source: dict[str, list[SearchSpec]] = {}
     for spec in specs:
         by_source.setdefault(spec.source, []).append(spec)
+    from ..profile_searches import disabled_sources
+    disabled = disabled_sources()
     for source, adapter in registry.aggregators().items():
         source_specs = by_source.get(source, [])
         st = stats[source] = {"searches": 0, "postings": 0, "new": 0, "errors": 0,
                               "skipped": 0}
+        if source in disabled:
+            log.info("source %s is in DISABLED_SOURCES — skipping %d search(es)",
+                     source, len(source_specs))
+            continue
         if not adapter.is_configured():
             log.warning("source %s unconfigured — skipping %d search(es): %s",
                         source, len(source_specs), adapter.unconfigured_reason())
@@ -184,6 +190,10 @@ def _search_within_cooldown(conn, search_name: str) -> bool:
 def run_builtin_poller(conn, searches: list[dict]) -> dict:
     stats = {"searches": 0, "postings": 0, "new": 0, "errors": 0, "companies_discovered": 0,
              "skipped_cooldown": 0}
+    from ..profile_searches import disabled_sources
+    if "builtin" in disabled_sources():
+        log.info("source builtin is in DISABLED_SOURCES — skipping")
+        return stats
     searches = [s for s in searches
                 if (s.get("source") or ("builtin" if s.get("url") else "")) == "builtin"]
     if not searches:
@@ -260,6 +270,13 @@ def main() -> None:
     try:
         sync_registry(conn, settings.companies_path)
         searches = load_searches(settings.searches_path)
+        if settings.profile_searches_enabled:
+            from ..profile_searches import derive_profile_searches
+            derived = derive_profile_searches(conn, searches)
+            if derived:
+                log.info("profile-derived searches (+%d): %s", len(derived),
+                         ", ".join(d["name"] for d in derived))
+                searches = searches + derived
         ats_stats = run_ats_pollers(conn)
         bi_stats = run_builtin_poller(conn, searches)
         agg_stats = run_aggregator_pollers(conn, searches)

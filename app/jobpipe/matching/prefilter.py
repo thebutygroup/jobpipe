@@ -2,17 +2,25 @@
 
 Pass = title matches a target title/synonym AND location passes
 (locations_ok match, or empty location = benefit of the doubt) AND no hard-no hit.
+
+MULTI-USER: the verdict is the UNION over every active applicant's profile —
+a posting passes if it is plausible for ANYONE. (Originally it judged against
+the owner's file profile only, which silently blackholed every posting that
+was relevant to a signup but not to the owner.) When the roster of active
+profiles changes, previously-rejected postings are re-examined once — a new
+signup must be able to "un-reject" the pond.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 
 from ..config import settings
 from ..db import connect, heartbeat, log_event, tx
 from ..models import PREFILTERED, REJECTED_AUTO, normalise_title
-from ..profile import Profile, load_profile
+from ..profile import Profile, ProfileError, load_applicant_profile, load_profile
 
 log = logging.getLogger(__name__)
 
@@ -50,7 +58,67 @@ def classify(title: str, location: str, profile: Profile) -> tuple[str, str]:
     return PREFILTERED, "title + location pass"
 
 
-def run(conn, profile: Profile) -> dict:
+def classify_multi(title: str, location: str,
+                   profiles: list[tuple[str, Profile]]) -> tuple[str, str]:
+    """Union verdict: PREFILTERED if the posting passes for ANY active
+    applicant, with the reason naming who it passed for."""
+    for who, profile in profiles:
+        state, reason = classify(title, location, profile)
+        if state == PREFILTERED:
+            return PREFILTERED, f"passes for {who}"
+    return REJECTED_AUTO, "no active profile matches title/location"
+
+
+def load_active_profiles(conn) -> list[tuple[str, Profile]]:
+    """(who, Profile) for every active applicant; falls back to the file
+    profile on a fresh DB (mirrors matcher bootstrap)."""
+    out: list[tuple[str, Profile]] = []
+    for row in conn.execute("SELECT * FROM applicants WHERE active = 1"
+                            " ORDER BY id").fetchall():
+        try:
+            out.append((row["user_ref"] or row["name"], load_applicant_profile(row)))
+        except (ProfileError, OSError) as e:
+            log.warning("prefilter: skipping profile for %s (%s)", row["user_ref"], e)
+    if not out:
+        out.append(("owner", load_profile(settings.profile_path)))
+    return out
+
+
+def _roster_key(profiles: list[tuple[str, Profile]]) -> str:
+    """Fingerprint of everything the verdict depends on. Changes when someone
+    joins/leaves or edits titles/synonyms/locations/hard-nos."""
+    parts = []
+    for who, p in sorted(profiles, key=lambda x: x[0]):
+        parts.append("|".join([who] + sorted(p.preferences.target_titles)
+                              + sorted(p.preferences.title_synonyms)
+                              + sorted(p.preferences.locations_ok)
+                              + sorted(p.preferences.hard_nos)))
+    return hashlib.sha256("||".join(parts).encode()).hexdigest()[:16]
+
+
+def rescan_if_roster_changed(conn, profiles: list[tuple[str, Profile]]) -> int:
+    """When the active-profile roster changes, clear previous REJECTED_AUTO
+    verdicts so those postings get re-classified against the new union.
+    Returns how many rejections were reopened."""
+    key = _roster_key(profiles)
+    row = conn.execute(
+        "SELECT json_extract(payload_json,'$.key') AS k FROM events"
+        " WHERE event_type='prefilter_roster' ORDER BY id DESC LIMIT 1").fetchone()
+    if row and row["k"] == key:
+        return 0
+    with tx(conn):
+        cur = conn.execute(
+            "DELETE FROM events WHERE event_type = 'prefilter:REJECTED_AUTO'")
+        log_event(conn, "prefilter_roster", payload={"key": key})
+    if row is not None:  # not the first-ever run
+        log.info("prefilter: roster changed — reopening %d rejected postings",
+                 cur.rowcount)
+    return cur.rowcount
+
+
+def run(conn, profiles: list[tuple[str, Profile]] | Profile) -> dict:
+    if isinstance(profiles, Profile):  # back-compat for single-profile callers
+        profiles = [("owner", profiles)]
     stats = {"seen": 0, "passed": 0, "rejected": 0}
     rows = conn.execute(
         "SELECT p.id, p.title, p.location FROM postings p "
@@ -59,7 +127,7 @@ def run(conn, profile: Profile) -> dict:
     ).fetchall()
     for row in rows:
         stats["seen"] += 1
-        state, reason = classify(row["title"], row["location"] or "", profile)
+        state, reason = classify_multi(row["title"], row["location"] or "", profiles)
         with tx(conn):
             log_event(conn, f"prefilter:{state}", posting_id=row["id"],
                       payload={"reason": reason})
@@ -71,8 +139,11 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
     conn = connect()
     try:
-        profile = load_profile(settings.profile_path)
-        stats = run(conn, profile)
+        profiles = load_active_profiles(conn)
+        reopened = rescan_if_roster_changed(conn, profiles)
+        stats = run(conn, profiles)
+        stats["profiles"] = len(profiles)
+        stats["reopened"] = reopened
         heartbeat(conn, "prefilter", ok=True, detail=str(stats))
         log.info("prefilter complete: %s", stats)
     except Exception as e:
