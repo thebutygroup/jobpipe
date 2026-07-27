@@ -72,8 +72,10 @@ def derive_profile_searches(conn, existing: list[dict],
         except (ProfileError, OSError) as e:
             log.warning("profile searches: skipping %s (%s)", row["user_ref"], e)
             continue
-        titles = [t for t in (profile.preferences.target_titles
-                              + profile.preferences.title_synonyms) if t.strip()]
+        # target_titles ONLY — synonyms (incl. machine-expanded ones) widen
+        # the prefilter, not the search list, so API/scrape budgets stay tied
+        # to what the person literally asked for.
+        titles = [t for t in profile.preferences.target_titles if t.strip()]
         locations = [loc for loc in profile.preferences.locations_ok
                      if loc.strip() and "remote" not in loc.lower()]
         location = (locations[0].split("(")[0].strip() if locations else "London")

@@ -139,7 +139,11 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
     conn = connect()
     try:
-        profiles = load_active_profiles(conn)
+        from . import title_expand
+        added = title_expand.expand_all(conn)
+        if added:
+            log.info("title expansion added %d synonym(s) across profiles", added)
+        profiles = load_active_profiles(conn)  # reloads expanded synonyms
         reopened = rescan_if_roster_changed(conn, profiles)
         stats = run(conn, profiles)
         stats["profiles"] = len(profiles)

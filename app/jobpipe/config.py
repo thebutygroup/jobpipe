@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     # match_min_per_run matches. For noisy boards.
     secondary_sources: str = "adzuna"
     match_min_per_run: int = 5
+    # One small model call per (changed) signup profile that expands their
+    # target titles into the similar titles employers actually post — feeds
+    # the prefilter so "Head of Data" also catches "Data Director".
+    title_expand_enabled: bool = True
+    title_expand_max: int = 8
     # Full off switch: never polled, never derived. Keys can stay in .env.
     disabled_sources: str = ""
 
