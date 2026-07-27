@@ -93,3 +93,35 @@ def test_daily_call_cap(conn, profile, monkeypatch):
     aid = matcher.ensure_applicant(conn, profile)
     stats = matcher.run(conn, profile, aid, client=client)
     assert stats["matched"] + stats["rejected"] == 2 and stats["capped"] == 1
+
+def test_per_user_cap_leaves_budget_for_next_applicant(conn, profile, monkeypatch):
+    """Fairness: applicant 1 stops at the per-user cap even though global
+    budget remains, so applicant 2 still gets scored the same day."""
+    from jobpipe.config import settings
+
+    monkeypatch.setattr(settings, "match_daily_call_cap", 100)
+    monkeypatch.setattr(settings, "match_daily_call_cap_per_user", 2)
+    for t in GOLDEN:
+        seed(conn, t)
+    client = FakeClient(GOLDEN)
+    aid1 = matcher.ensure_applicant(conn, profile)
+    conn.execute("INSERT INTO applicants (name, user_ref, profile_path)"
+                 " VALUES ('Second User', 'second', 'p')")
+    aid2 = conn.execute("SELECT id FROM applicants WHERE user_ref='second'"
+                        ).fetchone()["id"]
+    s1 = matcher.run(conn, profile, aid1, client=client)
+    assert s1["matched"] + s1["rejected"] == 2 and s1["capped"] == 1
+    s2 = matcher.run(conn, profile, aid2, client=FakeClient(GOLDEN))
+    assert s2["matched"] + s2["rejected"] == 2  # second user got their turn
+
+
+def test_per_user_cap_disabled_with_zero(conn, profile, monkeypatch):
+    from jobpipe.config import settings
+
+    monkeypatch.setattr(settings, "match_daily_call_cap", 100)
+    monkeypatch.setattr(settings, "match_daily_call_cap_per_user", 0)
+    for t in GOLDEN:
+        seed(conn, t)
+    aid = matcher.ensure_applicant(conn, profile)
+    stats = matcher.run(conn, profile, aid, client=FakeClient(GOLDEN))
+    assert stats["matched"] + stats["rejected"] == len(GOLDEN)

@@ -117,8 +117,19 @@ def call_model(client, profile: Profile, posting, raw_yaml: str = "") -> tuple[M
 
 
 def calls_today(conn) -> int:
+    """Successful model calls today across ALL applicants (global spend ceiling)."""
     row = conn.execute(
         "SELECT COUNT(*) AS n FROM matches WHERE created_at >= date('now')").fetchone()
+    return row["n"]
+
+
+def calls_today_for(conn, applicant_id: int) -> int:
+    """Successful model calls today for ONE applicant (fairness cap). Without
+    this, whoever matches first eats the whole global cap and everyone after
+    them gets zero — exactly what happened the day users 2-4 signed up."""
+    row = conn.execute(
+        "SELECT COUNT(*) AS n FROM matches WHERE created_at >= date('now')"
+        " AND applicant_id = ?", (applicant_id,)).fetchone()
     return row["n"]
 
 
@@ -169,10 +180,17 @@ def run(conn, profile: Profile, applicant_id: int, client=None, raw_yaml: str = 
         pending = pending[:settings.match_test_limit]
         log.info("TEST MODE: matcher limited to %d postings", len(pending))
     total = len(pending)
+    per_user_cap = settings.match_daily_call_cap_per_user
     for i, posting in enumerate(pending, 1):
         if calls_today(conn) >= settings.match_daily_call_cap:
             stats["capped"] += 1
-            log.warning("daily match call cap reached (%d)", settings.match_daily_call_cap)
+            log.warning("GLOBAL daily match call cap reached (%d)",
+                        settings.match_daily_call_cap)
+            break
+        if per_user_cap > 0 and calls_today_for(conn, applicant_id) >= per_user_cap:
+            stats["capped"] += 1
+            log.info("per-user daily cap reached for applicant %d (%d) — "
+                     "moving to next applicant", applicant_id, per_user_cap)
             break
         stats["considered"] += 1
         result, tokens = None, 0

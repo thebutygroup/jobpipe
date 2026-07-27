@@ -9,6 +9,7 @@ stays at the Cloudflare Access edge.
 from __future__ import annotations
 
 import json
+import logging
 
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import redirect, render
@@ -16,6 +17,8 @@ from django.views.decorators.http import require_GET, require_POST
 
 from ..db import IllegalTransition, connect, now, transition, tx
 from ..models import APPROVED, PENDING_REVIEW, REJECTED_HUMAN, SUBMITTING
+
+log = logging.getLogger(__name__)
 
 
 # Fields hidden on the PUBLIC /job_matches pages (name/email/phone/history are fine
@@ -64,6 +67,15 @@ SORTS = {
     "newest": "a.created_at DESC",
 }
 
+# Human labels for postings.source — shown as a badge on listings so readers
+# can judge (and filter out) noisy boards at a glance.
+SOURCE_LABELS = {
+    "ats": "company ATS",
+    "builtin": "Built In",
+    "adzuna": "Adzuna",
+    "reed": "Reed",
+}
+
 
 def _list_params(request) -> tuple[str, str, str]:
     """(keyword, sort_key, order_by_sql) from ?q= and ?sort=, whitelisted."""
@@ -76,7 +88,7 @@ def _list_params(request) -> tuple[str, str, str]:
 
 APP_QUERY = (
     "SELECT a.*, c.name AS company, p.title, p.location, p.apply_url, p.canonical_apply_url,"
-    "       p.description_text, p.raw_json, m.score, m.reasons_json, "
+    "       p.description_text, p.raw_json, p.source, m.score, m.reasons_json, "
     "       m.highlights_json, m.alignment_json "
     "FROM applications a "
     "JOIN postings p ON p.id = a.posting_id "
@@ -220,6 +232,7 @@ def user_matches(request, user_ref: str):
     for a in rows:
         a["reasons"] = json.loads(a.get("reasons_json") or "[]")
         a["highlights"] = json.loads(a.get("highlights_json") or "[]")
+        a["source_label"] = SOURCE_LABELS.get(a.get("source"), a.get("source") or "")
     return render(request, "user_matches.html",
                   {"rows": rows, "user_ref": user_ref, "q": q, "sort": sort,
                    "hide_internal_nav": True})
@@ -344,6 +357,9 @@ def all_postings(request, user_ref: str = ""):
     state = request.GET.get("state", "")
     min_score = request.GET.get("min_score", "")
     user = user_ref or request.GET.get("user", "")
+    # ?source=adzuna shows only that board; ?source=-adzuna hides it (some
+    # boards' listings are noisy — let readers exclude them).
+    source_sel = (request.GET.get("source") or "").strip()[:20]
     where, params = [], []
     if state:
         where.append("a.state = ?")
@@ -354,6 +370,9 @@ def all_postings(request, user_ref: str = ""):
     if user:
         where.append("ap.user_ref = ?")
         params.append(user)
+    if source_sel.lstrip("-"):
+        where.append("p.source != ?" if source_sel.startswith("-") else "p.source = ?")
+        params.append(source_sel.lstrip("-"))
     q, sort, order = _list_params(request)
     if q:
         where.append("p.title LIKE ?")
@@ -362,7 +381,7 @@ def all_postings(request, user_ref: str = ""):
     rows = _rows(
         "SELECT a.id, a.state, a.created_at, c.name AS company, p.title,"
         "       p.id AS posting_id, p.apply_url, p.canonical_apply_url,"
-        "       p.description_text, m.score,"
+        "       p.description_text, p.source, m.score,"
         "       ap.name AS user_name, ap.user_ref "
         "FROM applications a JOIN postings p ON p.id = a.posting_id "
         "JOIN companies c ON c.id = p.company_id "
@@ -377,6 +396,10 @@ def all_postings(request, user_ref: str = ""):
             r["date"] = (r["created_at"] or "")[:10]
         r["salary"] = analytics.salary_band(r.get("description_text") or "")
         r["listing_url"] = r.get("canonical_apply_url") or r.get("apply_url") or ""
+        r["source_label"] = SOURCE_LABELS.get(r.get("source"), r.get("source") or "")
+    source_opts = [
+        {"value": s["source"], "label": SOURCE_LABELS.get(s["source"], s["source"])}
+        for s in _rows("SELECT DISTINCT source FROM postings ORDER BY source")]
     if public:
         # 404 for unknown refs so the page doesn't render as an empty shell
         known = _rows("SELECT 1 AS x FROM applicants WHERE user_ref = ?", (user,))
@@ -386,11 +409,13 @@ def all_postings(request, user_ref: str = ""):
             "q": q, "sort": sort, "rows": rows, "state": state,
             "min_score": min_score, "user": user, "users": [],
             "public_user_ref": user, "hide_internal_nav": True,
+            "source_sel": source_sel, "source_opts": source_opts,
             "base_path": f"/all/{user}"})
     users = _rows("SELECT name, user_ref FROM applicants WHERE active = 1 ORDER BY name")
     return render(request, "all.html", {"q": q, "sort": sort, "rows": rows,
                   "state": state, "min_score": min_score, "user": user, "users": users,
-                  "public_user_ref": "", "base_path": "/all"})
+                  "public_user_ref": "", "source_sel": source_sel,
+                  "source_opts": source_opts, "base_path": "/all"})
 
 
 @require_GET
@@ -608,13 +633,33 @@ def _async(fn, *args) -> None:
     threading.Thread(target=fn, args=args, daemon=True).start()
 
 
-def _notify_joe(subject: str, html_body: str) -> None:
+def _record_email_event(kind: str, user_ref: str, ok: bool, to: str = "") -> None:
+    """Signup emails run on a background thread whose logs vanish with the
+    container — persist every attempt's outcome as a queryable event, so
+    'did the alert actually send?' has a durable answer in the DB."""
+    try:
+        from ..db import log_event
+        conn = connect()
+        try:
+            with tx(conn):
+                log_event(conn, "signup_email", payload={
+                    "kind": kind, "user_ref": user_ref, "ok": ok, "to": to})
+        finally:
+            conn.close()
+    except Exception:
+        log.exception("could not record signup_email event (%s/%s)", kind, user_ref)
+
+
+def _notify_joe(subject: str, html_body: str, user_ref: str = "") -> None:
     """Best-effort owner notification; never blocks or fails a signup."""
+    ok = False
     try:
         from .. import notify
-        notify.send_email(subject=subject, html_body=html_body)
+        ok = notify.send_email(subject=subject, html_body=html_body)
     except Exception:
-        pass
+        log.exception("owner notification failed: %r", subject)
+    log.info("signup email [owner-alert] user=%s sent=%s", user_ref, ok)
+    _record_email_event("owner_alert", user_ref, ok)
 
 
 def _send_welcome(user_ref: str, email: str, activated: bool) -> None:
@@ -633,9 +678,10 @@ def _send_welcome(user_ref: str, email: str, activated: bool) -> None:
     else:
         status = ("<p>Your profile is saved and queued — matching starts after "
                   "a quick human review, usually within a day.</p>")
+    ok = False
     try:
         from .. import notify
-        notify.send_email(
+        ok = notify.send_email(
             to=email.strip(),
             subject="Welcome to jobpipe — here's your matches page",
             html_body=(
@@ -653,7 +699,9 @@ def _send_welcome(user_ref: str, email: str, activated: bool) -> None:
             text_body=(f"You're in, {user_ref}!\n\nYour matches: {cards}\n"
                        f"Table view: {table}\n\nBookmark one."))
     except Exception:
-        pass
+        log.exception("welcome email failed for %s", user_ref)
+    log.info("signup email [welcome] user=%s to=%s sent=%s", user_ref, email.strip(), ok)
+    _record_email_event("welcome", user_ref, ok, to=email.strip())
 
 
 def _activate_or_flag(conn, user_ref: str) -> tuple[bool, int]:
@@ -691,7 +739,8 @@ def _signup_emails(user_ref: str, email: str, activated: bool, n_today: int) -> 
                       f"({n_today}/{_settings.signup_daily_cap} today). An instant "
                       f"mini match run is scoring their newest postings now; their "
                       f"page is /job_matches/{user_ref}.</p>"
-                      f"<p>{reach}</p>")
+                      f"<p>{reach}</p>",
+            user_ref=user_ref)
     else:
         _notify_joe(
             subject=f"[jobpipe] new signup PENDING: {user_ref} — cap hit, approval needed",
@@ -699,7 +748,8 @@ def _signup_emails(user_ref: str, email: str, activated: bool, n_today: int) -> 
                       f"cap ({_settings.signup_daily_cap}) was already reached. "
                       f"They're pending — activate from the applicants page flag "
                       f"or scripts/approve_user.py.</p>"
-                      f"<p>{reach}</p>")
+                      f"<p>{reach}</p>",
+            user_ref=user_ref)
     _send_welcome(user_ref, email, activated)
 
 

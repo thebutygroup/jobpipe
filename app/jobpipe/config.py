@@ -62,7 +62,13 @@ class Settings(BaseSettings):
     signup_instant_matches: int = 20  # postings scored immediately for a new signup
 
     match_threshold: int = 7
-    match_daily_call_cap: int = 200
+    # Two caps, checked in order. GLOBAL = the hard spend ceiling for the whole
+    # day. PER-USER = fairness: nobody can eat the global budget before later
+    # applicants get their turn (the first multi-user day proved this: one
+    # applicant consumed all 200 calls, three signups got zero). 0 disables
+    # the per-user cap.
+    match_daily_call_cap: int = 400
+    match_daily_call_cap_per_user: int = 50
     match_test_limit: int = 0        # >0 caps matcher to N postings (testing)
     poll_test_limit: int = 0         # >0 caps each poller to N postings (testing)
     builtin_max_pages: int = 30      # result pages walked per Built In saved search

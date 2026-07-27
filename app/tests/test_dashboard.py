@@ -323,3 +323,25 @@ def test_landing_and_onboard_have_submit_feedback(conn, monkeypatch):
     for path in ("/", "/onboard"):
         html = Client().get(path).content.decode()
         assert "qsSubmit" in html and "Creating your page" in html, path
+
+
+def test_all_source_badge_and_filter(conn, monkeypatch):
+    """Postings show which board they came from; ?source=-adzuna hides the
+    noisy board, ?source=adzuna shows only it."""
+    _point_db(monkeypatch, conn)
+    seed_pending(conn)  # ats posting (Acme)
+    pid, _ = upsert_posting(conn, PostingDTO(
+        company_name="SpamCo", source="adzuna", external_id="z9",
+        title="Data Engineer (Agency)", location="London",
+        apply_url="https://adzuna.example/z9", description_text="d"))
+    conn.execute("INSERT INTO applications (posting_id, applicant_id, state,"
+                 " created_at, updated_at) VALUES (?,1,'MATCHED',"
+                 " datetime('now'), datetime('now'))", (pid,))
+    conn.commit()
+    client = Client()
+    r = client.get("/all")
+    assert b"company ATS" in r.content and b"Adzuna" in r.content
+    r = client.get("/all", {"source": "-adzuna"})
+    assert b"SpamCo" not in r.content and b"Acme" in r.content
+    r = client.get("/all", {"source": "adzuna"})
+    assert b"SpamCo" in r.content and b"Acme" not in r.content
