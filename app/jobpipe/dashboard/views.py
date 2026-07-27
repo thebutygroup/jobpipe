@@ -615,6 +615,11 @@ def _instant_mini_run(user_ref: str) -> None:
                 log_event(conn, "signup_instant_match",
                           payload={"user_ref": user_ref, **{k: v for k, v in stats.items()}})
             log.info("instant mini-run for %s: %s", user_ref, stats)
+            if stats.get("matched", 0) > 0:
+                # close the loop: the welcome email linked to a page that was
+                # empty at send time — now that matches exist, send them.
+                from ..matches_mail import send_matches_ready
+                log.info("matches-ready: %s", send_matches_ready(conn, row))
         except Exception:
             log.exception("instant mini-run failed for %s", user_ref)
         finally:
