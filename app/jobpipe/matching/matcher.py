@@ -15,9 +15,11 @@ import re
 
 from pydantic import BaseModel, Field, ValidationError
 
+from .. import health
 from ..config import settings
 from ..db import connect, heartbeat, log_event, now, tx
 from ..models import MATCHED, REJECTED_AUTO
+from ..notify import send_failure
 from ..profile import Profile, load_applicant_profile, load_profile
 
 log = logging.getLogger(__name__)
@@ -219,6 +221,23 @@ def run(conn, profile: Profile, applicant_id: int, client=None, raw_yaml: str = 
     return stats
 
 
+def finish_run(conn, all_stats: dict) -> None:
+    """Record the run's heartbeat honestly. A run where EVERY model call fails
+    (invalid API key, network dead) still reaches this line because per-posting
+    errors are caught — that is NOT ok: beat red and email, don't let the
+    failure hide inside the detail string (it did once, for four days)."""
+    all_failed, n_considered = health.all_calls_failed(all_stats)
+    heartbeat(conn, "match", ok=not all_failed, detail=str(all_stats))
+    if all_failed:
+        send_failure(
+            "match",
+            f"matcher run completed but ALL {n_considered} model calls failed "
+            f"— zero matches produced. Most likely causes: invalid "
+            f"ANTHROPIC_API_KEY, no network egress, or a model-name typo. "
+            f"Check: docker compose logs jobpipe-scheduler | "
+            f"Select-String anthropic\n\nstats: {all_stats}")
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -250,9 +269,8 @@ def main() -> None:
                     raw_yaml = ""
             log.info("=== matching for %s (applicant %d) ===", row["name"], row["id"])
             all_stats[row["name"]] = run(conn, profile, row["id"], raw_yaml=raw_yaml)
-        stats = all_stats
-        heartbeat(conn, "match", ok=True, detail=str(stats))
-        log.info("match complete: %s", stats)
+        finish_run(conn, all_stats)
+        log.info("match complete: %s", all_stats)
     except Exception as e:
         heartbeat(conn, "match", ok=False, detail=str(e))
         raise

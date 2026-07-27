@@ -22,5 +22,6 @@ urlpatterns = [
     path("app/<int:app_id>/reject", views.app_reject, name="app_reject"),
     path("app/<int:app_id>/resume", views.app_resume, name="app_resume"),
     path("app/<int:app_id>/applied", views.app_applied, name="app_applied"),
+    path("health", views.health, name="health"),
     path("healthz", views.healthz, name="healthz"),
 ]

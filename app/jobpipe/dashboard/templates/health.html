@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}jobpipe — pipeline health{% endblock %}
+{% block content %}
+<h1>Pipeline health</h1>
+
+{% if overall == "ok" %}
+<div class="card" style="border-left:4px solid var(--good)">
+  <strong class="good" style="font-size:15px">✓ All systems producing</strong>
+  <div class="meta">Every scheduled job ran on time and the work inside each
+  run succeeded.</div>
+</div>
+{% elif overall == "warn" %}
+<div class="card" style="border-left:4px solid var(--warn)">
+  <strong class="flag">⚠ Needs a look</strong>
+  <div class="meta">Everything is running, but some work inside recent runs
+  failed — details below.</div>
+</div>
+{% else %}
+<div class="card" style="border-left:4px solid var(--danger)">
+  <strong class="bad">✗ Attention needed</strong>
+  <div class="meta">At least one job is down, stale, or completing runs whose
+  work all fails. Details below.</div>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Scheduled jobs</h2>
+  <p class="meta" style="max-width:640px">Green means more than "the run
+  finished" — it means the work inside the run succeeded. A job whose calls
+  all fail shows <span class="bad">down</span> even when its run completes
+  (that exact failure once hid for four days).</p>
+  <table class="tbl">
+    <thead><tr><th>job</th><th>status</th><th>last run (UTC)</th>
+      <th>age</th><th>what it does</th></tr></thead>
+    <tbody>
+    {% for e in board %}
+      <tr>
+        <td data-l="job"><strong>{{ e.job }}</strong></td>
+        <td data-l="status">
+          {% if e.status == "ok" %}<span class="good">✓ ok</span>
+          {% elif e.status == "warn" %}<span class="flag">⚠ warn</span>
+          {% elif e.status == "off" %}<span class="meta">off</span>
+          {% else %}<span class="bad">✗ down</span>{% endif %}
+          {% if e.note %}<div class="meta">{{ e.note }}</div>{% endif %}
+        </td>
+        <td data-l="last run">{{ e.last_at|default:"—" }}</td>
+        <td data-l="age">{% if e.age_h is not None %}{{ e.age_h }}h{% else %}—{% endif %}</td>
+        <td data-l="does" class="meta">{{ e.blurb }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Matcher activity — last 14 days</h2>
+  <p class="meta" style="max-width:640px">The two curves that diverge when the
+  matcher silently dies: matches drop to zero while failures pile up. A day
+  with failures and no matches is the alarm.</p>
+  {% if activity %}
+  <table class="tbl">
+    <thead><tr><th>day</th><th>matched</th><th>below threshold</th><th>failed</th></tr></thead>
+    <tbody>
+    {% for a in activity %}
+      <tr>
+        <td data-l="day">{{ a.d }}</td>
+        <td data-l="matched">{% if a.matched %}<span class="good">{{ a.matched }}</span>{% else %}<span class="meta">·</span>{% endif %}</td>
+        <td data-l="rejected">{{ a.rejected|default:"·" }}</td>
+        <td data-l="failed">{% if a.failed %}<span class="bad">{{ a.failed }}</span>{% else %}<span class="meta">·</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="empty">No matcher events in the last 14 days.</div>{% endif %}
+</div>
+{% endblock %}

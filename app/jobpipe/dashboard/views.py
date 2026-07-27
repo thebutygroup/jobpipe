@@ -398,6 +398,26 @@ def healthz(request):
     return HttpResponse("ok", content_type="text/plain")
 
 
+@require_GET
+def health(request):
+    """Pipeline health board. Private. One glance answers 'is everything
+    actually running?' — including the failure mode where a job completes
+    but every call inside it failed (heartbeat ok, work dead)."""
+    from .. import health as health_mod
+
+    conn = connect()
+    try:
+        board = health_mod.job_board(conn)
+        ctx = {
+            "board": board,
+            "overall": health_mod.overall(board),
+            "activity": health_mod.match_activity(conn),
+        }
+    finally:
+        conn.close()
+    return render(request, "health.html", ctx)
+
+
 def stats(request):
     """Analytics: funnel, score-band outcomes, role focus. Private.
     ?applicant=<id> scopes everything to one applicant."""
