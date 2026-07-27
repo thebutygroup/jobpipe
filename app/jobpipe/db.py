@@ -122,6 +122,28 @@ CREATE TABLE IF NOT EXISTS index_companies (
     workday_host TEXT, workday_tenant TEXT, workday_site TEXT,
     last_checked TEXT, notes TEXT
 );
+CREATE TABLE IF NOT EXISTS apply_routes (
+    id INTEGER PRIMARY KEY,
+    posting_id INTEGER NOT NULL UNIQUE REFERENCES postings(id),
+    platform TEXT NOT NULL,             -- greenhouse|lever|ashby|workable|company_site|login_walled
+    method TEXT NOT NULL,               -- browser_form | manual_assist
+    final_url TEXT NOT NULL,
+    hops_json TEXT,                     -- resolution chain, for audit
+    resolved_at TEXT NOT NULL,
+    notes TEXT
+);
+CREATE TABLE IF NOT EXISTS assets (
+    id INTEGER PRIMARY KEY,
+    applicant_id INTEGER NOT NULL REFERENCES applicants(id),
+    kind TEXT NOT NULL DEFAULT 'resume',
+    variant_name TEXT NOT NULL DEFAULT 'default',
+    filename TEXT NOT NULL,             -- vault-generated on-disk name
+    original_name TEXT,
+    content_sha256 TEXT,
+    size INTEGER,
+    uploaded_at TEXT NOT NULL,
+    UNIQUE (applicant_id, kind, variant_name)
+);
 CREATE TABLE IF NOT EXISTS source_postings (
     id INTEGER PRIMARY KEY,
     posting_id INTEGER NOT NULL REFERENCES postings(id),
@@ -207,6 +229,8 @@ def connect(db_path: str | None = None) -> sqlite3.Connection:
         conn.execute("ALTER TABLE applicants ADD COLUMN user_ref TEXT")
     if "profile_yaml" not in acols:
         conn.execute("ALTER TABLE applicants ADD COLUMN profile_yaml TEXT")
+    if "vault_token" not in acols:
+        conn.execute("ALTER TABLE applicants ADD COLUMN vault_token TEXT")
     pcols = {r["name"] for r in conn.execute("PRAGMA table_info(postings)")}
     if "duplicate_of" not in pcols:
         conn.execute("ALTER TABLE postings ADD COLUMN duplicate_of INTEGER REFERENCES postings(id)")

@@ -126,18 +126,47 @@ def _first_match(text: str, pattern: str) -> str:
     return m.group(1).strip() if m else ""
 
 
+def load_cookie_jar() -> dict | None:
+    """Cookie jar for detail RESOLUTION only (the apply link hides behind
+    login). Reads settings.builtin_cookies_path — a JSON object {name: value}
+    or a Cookie-Editor-style export list [{"name":..,"value":..}, ...].
+    Missing/invalid file => None (anonymous fetch, exactly as before).
+    HARD RULE: this jar is never used to SUBMIT anything anywhere."""
+    import json
+    import pathlib
+
+    from ..config import settings
+
+    path = pathlib.Path(settings.builtin_cookies_path)
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        log.warning("builtin cookie file unreadable: %s", path)
+        return None
+    if isinstance(data, dict):
+        return {str(k): str(v) for k, v in data.items()} or None
+    if isinstance(data, list):
+        jar = {str(c["name"]): str(c["value"]) for c in data
+               if isinstance(c, dict) and c.get("name") is not None}
+        return jar or None
+    log.warning("builtin cookie file has unexpected shape: %s", path)
+    return None
+
+
 def resolve_job_detail(builtin_job_url: str) -> dict:
     """Fetch the Built In job detail page once and extract everything useful:
 
     - full_description: the complete posting text (renders server-side)
     - company_page_url: the Built In company page (/company/<slug>)
-    - external_apply_url: direct company/ATS link IF present. NOTE: Built In
-      gates the apply button behind login, so this is usually absent; we keep
-      the builtin URL as the listing link. Resolving the company's own ATS via
-      its website is the proper fix (roadmap: company-side resolution).
+    - external_apply_url: direct company/ATS link IF present. Built In gates
+      the apply button behind login, so anonymously this is usually absent;
+      with a cookie jar (data/builtin_cookies.json, resolution-only) the
+      logged-in page exposes it.
     - ats_info: {ats, board_token} when the external link reveals a known ATS
     """
-    html = polite_get(builtin_job_url).text
+    html = polite_get(builtin_job_url, cookies=load_cookie_jar()).text
     soup = BeautifulSoup(html, "html.parser")
 
     external = ""

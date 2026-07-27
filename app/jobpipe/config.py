@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     track_enabled: bool = True   # false = skip outcome tracking (no IMAP mailbox yet)
 
     db_path: str = "/app/data/jobpipe.db"
+    assets_root: str = "/app/data/assets"   # asset vault: gitignored volume, never served
     profile_path: str = "profile.yaml"
     companies_path: str = "companies.yaml"
     searches_path: str = "searches.yaml"
@@ -65,6 +66,10 @@ class Settings(BaseSettings):
     match_test_limit: int = 0        # >0 caps matcher to N postings (testing)
     poll_test_limit: int = 0         # >0 caps each poller to N postings (testing)
     builtin_max_pages: int = 30      # result pages walked per Built In saved search
+    # Cookie jar for Built In DETAIL RESOLUTION ONLY (reading listing pages the
+    # apply button hides behind login). Lives under data/ (gitignored AND
+    # dockerignored). NEVER used for submission — see docs/APPLY-FLOW-PLAN.md.
+    builtin_cookies_path: str = "data/builtin_cookies.json"
     poll_cooldown_days: float = 0    # >0 skips a board/search polled within N days
     match_model: str = "claude-haiku-4-5"
 
