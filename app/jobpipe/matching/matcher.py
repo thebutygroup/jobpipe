@@ -224,7 +224,24 @@ def run(conn, profile: Profile, applicant_id: int, client=None, raw_yaml: str = 
         log.info("per-user daily cap already reached for applicant %d (%d) — "
                  "skipping", applicant_id, per_user_cap)
         return stats
-    primary, secondary = order_pending(pending_postings(conn, applicant_id))
+    # PER-APPLICANT relevance gate: the shared prefilter passes anything
+    # relevant to ANY active profile (that's what fills the pond for
+    # everyone), but THIS applicant's model calls are spent only on postings
+    # that pass THEIR OWN title/location rules. Free (in-memory substring
+    # checks); skipped postings simply stay pending and cost nothing.
+    from .prefilter import classify
+    pending, skipped = [], 0
+    for p in pending_postings(conn, applicant_id):
+        state, _ = classify(p["title"], p["location"] or "", profile)
+        if state == "PREFILTERED":
+            pending.append(p)
+        else:
+            skipped += 1
+    stats["irrelevant_skipped"] = skipped
+    if skipped:
+        log.info("applicant %d: %d pending postings irrelevant to their "
+                 "profile — skipped free of charge", applicant_id, skipped)
+    primary, secondary = order_pending(pending)
     pending = primary + secondary
     n_primary = len(primary)
     if max_postings > 0:

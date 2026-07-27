@@ -43,12 +43,15 @@ def seed(conn, title):
     return pid
 
 
+# All titles are RELEVANT to the fixture profile (the matcher now skips
+# irrelevant titles before spending a call) — the model's score alone decides
+# the band.
 GOLDEN = {
-    "Forward Deployed Engineer": 9,   # obvious fit
-    "Senior Data Engineer": 8,        # obvious fit
-    "Data Analyst": 2,                # obvious reject
-    "Marketing Lead": 1,              # obvious reject
-    "Engineering Manager": 6,         # borderline -> below threshold 7
+    "Forward Deployed Engineer": 9,     # obvious fit
+    "Senior Data Engineer": 8,          # obvious fit
+    "Machine Learning Engineer": 2,     # relevant title, weak posting
+    "Applied AI Engineer": 1,           # relevant title, terrible posting
+    "Data Engineering Manager": 6,      # borderline -> below threshold 7
 }
 
 

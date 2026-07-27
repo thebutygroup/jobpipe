@@ -25,7 +25,11 @@ def profile():
             target_titles=["Forward Deployed Engineer", "Senior Data Engineer",
                            "Machine Learning Engineer", "Founding Engineer",
                            "Data Engineering Manager", "Applied AI Engineer"],
-            title_synonyms=["FDE"],
+            # the ex-DEFAULT_SYNONYMS now live on the profile (as they do in
+            # the owner's real profile.yaml) — no more code-level synonyms
+            # that leak onto every applicant
+            title_synonyms=["FDE", "Forward Deployed", "AI Engineer",
+                            "Member of Technical Staff", "Solutions Engineer AI"],
             locations_ok=["London", "Remote (UK)", "Hybrid", "United Kingdom"],
             hard_nos=["Paris only", "requires relocation"],
         ),

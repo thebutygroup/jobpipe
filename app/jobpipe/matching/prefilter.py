@@ -24,17 +24,17 @@ from ..profile import Profile, ProfileError, load_applicant_profile, load_profil
 
 log = logging.getLogger(__name__)
 
-DEFAULT_SYNONYMS = [
-    "fde", "forward deployed", "forward-deployed",
-    "solutions engineer ai", "member of technical staff", "ai engineer",
-]
+# NOTE: there used to be hardcoded DEFAULT_SYNONYMS here ("ai engineer",
+# "fde", ...) from the single-user days. In a multi-profile world they made
+# EVERY applicant title-match AI jobs — a Head of Data was scored against
+# "Senior AI Engineer". They're gone: put them in the owner profile.yaml's
+# preferences.title_synonyms where they belong.
 
 
 def title_matches(title: str, profile: Profile) -> bool:
     norm = normalise_title(title)
     candidates = [normalise_title(t) for t in
-                  profile.preferences.target_titles + profile.preferences.title_synonyms
-                  + DEFAULT_SYNONYMS]
+                  profile.preferences.target_titles + profile.preferences.title_synonyms]
     return any(c and c in norm for c in candidates)
 
 

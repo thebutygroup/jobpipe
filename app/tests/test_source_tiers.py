@@ -119,3 +119,54 @@ def test_order_pending_holds_secondary_back(monkeypatch):
     primary, secondary = matcher.order_pending(rows)
     assert {r["source"] for r in primary} == {"builtin", "ats"}
     assert all(r["source"] == "adzuna" for r in secondary)
+
+
+def test_matcher_gates_on_applicants_own_profile(conn, profile):
+    """The pond is shared (union prefilter) but each applicant's model calls
+    are spent only on postings matching THEIR titles. Replays the Eeezee
+    incident: a Head of Data must not be scored against ML Engineer jobs."""
+    import json as _json
+    from types import SimpleNamespace
+
+    from jobpipe.db import log_event, upsert_posting
+    from jobpipe.models import PostingDTO
+
+    class CountingClient:
+        def __init__(self):
+            self.titles_scored = []
+            self.messages = self
+
+        def create(self, model, max_tokens, temperature, messages):
+            prompt = messages[0]["content"]
+            self.titles_scored.append(prompt)
+            return SimpleNamespace(
+                content=[SimpleNamespace(type="text", text=_json.dumps(
+                    {"score": 8, "reasons": ["r"], "red_flags": [],
+                     "seniority_fit": "right", "questions_visible": []}))],
+                usage=SimpleNamespace(input_tokens=10, output_tokens=5))
+
+    for title in ("Machine Learning Engineer", "Head of Data"):
+        pid, _ = upsert_posting(conn, PostingDTO(
+            company_name="Acme", source="ats", external_id=title, title=title,
+            location="London", apply_url=f"https://boards.greenhouse.io/a/{title}",
+            description_text="d"))
+        log_event(conn, "prefilter:PREFILTERED", posting_id=pid)  # union pass
+    conn.commit()
+    import yaml as _yaml
+    conn.execute(
+        "INSERT INTO applicants (name, user_ref, profile_path, profile_yaml, active)"
+        " VALUES ('Eeezee','eeezee','',?,1)",
+        (_yaml.safe_dump({
+            "identity": {"full_name": "Eeezee", "email": "", "location": ""},
+            "preferences": {"target_titles": ["Head of Data"],
+                            "locations_ok": ["London"]}}),))
+    conn.commit()
+    row = conn.execute("SELECT * FROM applicants WHERE user_ref='eeezee'").fetchone()
+    from jobpipe.matching import matcher
+    from jobpipe.profile import load_applicant_profile
+    eeezee = load_applicant_profile(row)
+    client = CountingClient()
+    stats = matcher.run(conn, eeezee, row["id"], client=client)
+    assert stats["considered"] == 1              # only Head of Data scored
+    assert stats["irrelevant_skipped"] == 1      # ML Engineer skipped free
+    assert all("Head of Data" in p for p in client.titles_scored)
