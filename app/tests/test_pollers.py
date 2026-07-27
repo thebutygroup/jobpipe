@@ -96,3 +96,53 @@ def test_detect_ats():
     assert builtin.detect_ats("https://jobs.ashbyhq.com/beta/uuid") == {
         "ats": "ashby", "board_token": "beta"}
     assert builtin.detect_ats("https://example.com/careers") == {}
+
+
+def test_builtin_known_cards_skip_detail_resolution(conn, monkeypatch):
+    """Second poll of the same card must not re-fetch its detail page —
+    resolution costs ~1s/job and the data is already in the DB."""
+    from jobpipe.models import PostingDTO
+    from jobpipe.pollers import builtin as bi
+    from jobpipe.pollers import runner
+
+    dto = PostingDTO(
+        company_name="Acme", source="builtin", external_id="/job/acme-eng",
+        title="Photographer", location="London",
+        apply_url="https://builtinlondon.uk/job/acme-eng",
+        description_text="card text",
+        raw={"builtin_job_url": "https://builtinlondon.uk/job/acme-eng",
+             "builtin_company_slug": "acme"})
+    resolved = {"n": 0}
+
+    def fake_resolve(url):
+        resolved["n"] += 1
+        return {"external_apply_url": "", "company_page_url": "",
+                "full_description": "full text here", "ats_info": {}}
+
+    monkeypatch.setattr(bi, "robots_allows", lambda: True)
+    monkeypatch.setattr(bi, "fetch_search", lambda url, max_pages: [
+        PostingDTO(**{**dto.__dict__})])
+    monkeypatch.setattr(bi, "resolve_job_detail", fake_resolve)
+    searches = [{"name": "s1", "url": "https://builtinlondon.uk/jobs?search=x"}]
+    s1 = runner.run_builtin_poller(conn, searches)
+    assert s1["new"] == 1 and resolved["n"] == 1
+    s2 = runner.run_builtin_poller(conn, searches)
+    assert resolved["n"] == 1          # no second detail fetch
+    assert s2.get("known") == 1        # counted as already-known
+    row = conn.execute("SELECT closed_at FROM postings").fetchone()
+    assert row["closed_at"] is None    # still marked alive
+
+
+def test_aggregator_search_cooldown(conn, monkeypatch):
+    from jobpipe.config import settings
+    from jobpipe.db import log_event
+    from jobpipe.pollers import runner
+
+    monkeypatch.setattr(settings, "poll_cooldown_days", 1.0)
+    assert not runner._agg_search_within_cooldown(conn, "reed", "s1")
+    log_event(conn, "aggregator_call", payload={"source": "reed", "search": "s1"})
+    conn.commit()
+    assert runner._agg_search_within_cooldown(conn, "reed", "s1")
+    assert not runner._agg_search_within_cooldown(conn, "adzuna", "s1")
+    monkeypatch.setattr(settings, "poll_cooldown_days", 0)
+    assert not runner._agg_search_within_cooldown(conn, "reed", "s1")

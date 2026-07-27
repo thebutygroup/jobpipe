@@ -135,6 +135,9 @@ def run_aggregator_pollers(conn, searches: list[dict]) -> dict:
             continue
         cap = settings.adzuna_daily_call_cap if source == "adzuna" else 10**9
         for spec in source_specs:
+            if _agg_search_within_cooldown(conn, source, spec.label):
+                st["skipped"] += 1
+                continue
             if _aggregator_calls_today(conn, source) >= cap:
                 st["skipped"] += 1
                 log.warning("%s daily call cap (%d) reached; skipping %s",
@@ -186,6 +189,19 @@ def _search_within_cooldown(conn, search_name: str) -> bool:
     return _within_cooldown(row["created_at"]) if row else False
 
 
+def _agg_search_within_cooldown(conn, source: str, label: str) -> bool:
+    """Same POLL_COOLDOWN_DAYS contract for API aggregator searches: a search
+    hit recently isn't hit again (saves API budget and wall-clock)."""
+    if settings.poll_cooldown_days <= 0:
+        return False
+    row = conn.execute(
+        "SELECT created_at FROM events WHERE event_type = 'aggregator_call' "
+        "AND json_extract(payload_json, '$.source') = ? "
+        "AND json_extract(payload_json, '$.search') = ? "
+        "ORDER BY id DESC LIMIT 1", (source, label)).fetchone()
+    return _within_cooldown(row["created_at"]) if row else False
+
+
 
 def run_builtin_poller(conn, searches: list[dict]) -> dict:
     stats = {"searches": 0, "postings": 0, "new": 0, "errors": 0, "companies_discovered": 0,
@@ -213,6 +229,19 @@ def run_builtin_poller(conn, searches: list[dict]) -> dict:
             log.exception("builtin search failed: %s", search.get("name"))
             continue
         for dto in dtos:
+            # Detail resolution costs ~1s of polite fetching PER JOB. A card
+            # we've already ingested needs none of it — just refresh its
+            # last-seen so close_stale() keeps it alive.
+            already = conn.execute(
+                "SELECT posting_id FROM source_postings WHERE source='builtin'"
+                " AND external_id = ?", (dto.external_id,)).fetchone()
+            if already:
+                with tx(conn):
+                    conn.execute(
+                        "UPDATE postings SET last_seen_at = ?, closed_at = NULL"
+                        " WHERE id = ?", (now(), already["posting_id"]))
+                stats["known"] = stats.get("known", 0) + 1
+                continue
             try:
                 detail = builtin.resolve_job_detail(dto.raw["builtin_job_url"])
                 dto.apply_url = detail["external_apply_url"] or dto.raw["builtin_job_url"]
