@@ -16,6 +16,7 @@ def test_send_retries_once_then_fails(monkeypatch):
     monkeypatch.setattr(settings, "smtp_user", "me@zoho.eu")
     monkeypatch.setattr(settings, "smtp_password", "app-pass")
     monkeypatch.setattr(settings, "notify_to", "me@zoho.eu")
+    monkeypatch.setattr(settings, "smtp_port", 465)  # else .env picks the transport
     with mock.patch("smtplib.SMTP_SSL", side_effect=OSError("boom")) as m:
         assert notify.send_email("s", "<p>b</p>") is False
         assert m.call_count == 2  # one retry
@@ -27,6 +28,10 @@ def test_send_success(monkeypatch):
     monkeypatch.setattr(settings, "smtp_user", "me@zoho.eu")
     monkeypatch.setattr(settings, "smtp_password", "app-pass")
     monkeypatch.setattr(settings, "notify_to", "me@zoho.eu")
+    monkeypatch.setattr(settings, "smtp_port", 465)
+    # blank MAIL_FROM is the case under test (sender falls back to smtp_user);
+    # unpinned, the box's .env supplies a real one and the assertion inverts.
+    monkeypatch.setattr(settings, "mail_from", "")
     with mock.patch("smtplib.SMTP_SSL") as m:
         assert notify.send_email("subject", "<p>body</p>") is True
         server = m.return_value.__enter__.return_value
@@ -55,6 +60,10 @@ def _wire(monkeypatch, port):
     monkeypatch.setattr(settings, "smtp_password", "pw")
     monkeypatch.setattr(settings, "notify_to", "joe@gmail.com")
     monkeypatch.setattr(settings, "smtp_port", port)
+    # Pin the display name too: config falls back to the box's real .env, where
+    # MAIL_FROM_NAME is "JobPipe" — leaving it unpinned makes these tests pass
+    # or fail depending on the deployment they happen to run next to.
+    monkeypatch.setattr(settings, "mail_from_name", "jobpipe")
     fake = _FakeServer()
     monkeypatch.setattr(notify.smtplib, "SMTP_SSL", lambda *a, **k: fake)
     monkeypatch.setattr(notify.smtplib, "SMTP", lambda *a, **k: fake)
