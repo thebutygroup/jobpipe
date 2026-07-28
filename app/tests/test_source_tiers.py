@@ -170,3 +170,44 @@ def test_matcher_gates_on_applicants_own_profile(conn, profile):
     assert stats["considered"] == 1              # only Head of Data scored
     assert stats["irrelevant_skipped"] == 1      # ML Engineer skipped free
     assert all("Head of Data" in p for p in client.titles_scored)
+
+
+def test_thin_pond_fans_searches_out_to_synonyms(conn, monkeypatch):
+    """No-matches protocol: when literal titles match almost nothing open,
+    synonyms become SEARCHES too (not just prefilter wideners). A user with
+    healthy coverage keeps literal-only searches."""
+    from jobpipe.config import settings
+    from jobpipe.db import upsert_posting
+    from jobpipe.models import PostingDTO
+
+    monkeypatch.setattr(settings, "disabled_sources", "")
+    monkeypatch.setattr(settings, "title_expand_when_below", 3)
+    # maria: zero coverage, has synonyms -> fan out
+    profile_yaml = yaml.safe_dump({
+        "identity": {"full_name": "Maria", "email": "", "location": ""},
+        "preferences": {"target_titles": ["Photographer"],
+                        "title_synonyms": ["Retoucher", "Photo Editor"],
+                        "locations_ok": ["London"]}})
+    conn.execute("INSERT INTO applicants (name, user_ref, profile_path,"
+                 " profile_yaml, active) VALUES ('Maria','maria','',?,1)",
+                 (profile_yaml,))
+    conn.commit()
+    derived = profile_searches.derive_profile_searches(conn, [])
+    kws = {d["keywords"] for d in derived}
+    assert {"photographer", "retoucher", "photo editor"} <= kws
+    # synonym fan-out hits the quality boards only — never adzuna
+    syn_sources = {d["source"] for d in derived
+                   if d["keywords"] in ("retoucher", "photo editor")}
+    assert syn_sources <= {"builtin", "reed"}
+    lit_sources = {d["source"] for d in derived if d["keywords"] == "photographer"}
+    assert "adzuna" in lit_sources
+    # now give the pond plenty of photographer coverage -> literal only again
+    for i in range(3):
+        upsert_posting(conn, PostingDTO(
+            company_name=f"Studio{i}", source="reed", external_id=f"ph{i}",
+            title=f"Photographer {i}", location="London",
+            apply_url=f"https://reed.example/ph{i}", description_text="d"))
+    conn.commit()
+    derived = profile_searches.derive_profile_searches(conn, [])
+    kws = {d["keywords"] for d in derived}
+    assert "photographer" in kws and "retoucher" not in kws
