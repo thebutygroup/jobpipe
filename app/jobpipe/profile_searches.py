@@ -24,6 +24,9 @@ from .profile import ProfileError, load_applicant_profile
 log = logging.getLogger(__name__)
 
 QUERY_SOURCES = ("builtin", "adzuna", "reed")   # sources that take arbitrary terms
+# Synonym fan-out (the no-matches protocol) searches the QUALITY boards only —
+# widening a struggling user's net on a noisy board multiplies noise, not help.
+FANOUT_SOURCES = ("builtin", "reed")
 BUILTIN_SEARCH_URL = "https://builtinlondon.uk/jobs?search={q}"
 
 
@@ -73,19 +76,31 @@ def derive_profile_searches(conn, existing: list[dict],
         except (ProfileError, OSError) as e:
             log.warning("profile searches: skipping %s (%s)", row["user_ref"], e)
             continue
-        # target_titles ONLY — synonyms (incl. machine-expanded ones) widen
-        # the prefilter, not the search list, so API/scrape budgets stay tied
-        # to what the person literally asked for.
+        # target_titles by default — synonyms widen the prefilter, not the
+        # search list, so API budgets stay tied to what the person asked for.
+        # EXCEPTION (the no-matches fan-out): when their literal titles match
+        # almost nothing in the pond, searching only those words is a dead
+        # end — so their synonyms (incl. machine-expanded ones) become
+        # searches too, until coverage recovers.
         titles = [t for t in profile.preferences.target_titles if t.strip()]
+        search_plan = [(t, QUERY_SOURCES) for t in titles]
+        from .matching.title_expand import literal_coverage
+        if literal_coverage(conn, titles) < settings.title_expand_when_below:
+            extra = [s for s in profile.preferences.title_synonyms if s.strip()]
+            if extra:
+                log.info("thin pond for %s — fanning searches out to %d "
+                         "synonym(s) on %s", row["user_ref"], len(extra),
+                         "/".join(FANOUT_SOURCES))
+            search_plan += [(s, FANOUT_SOURCES) for s in extra]
         locations = [loc for loc in profile.preferences.locations_ok
                      if loc.strip() and "remote" not in loc.lower()]
         location = (locations[0].split("(")[0].strip() if locations else "London")
         who = row["user_ref"] or f"applicant{row['id']}"
-        for title in titles:
+        for title, sources in search_plan:
             kw = _norm(title)
             if not kw:
                 continue
-            for source in QUERY_SOURCES:
+            for source in sources:
                 if source in disabled or (source, kw) in seen:
                     continue
                 seen.add((source, kw))
