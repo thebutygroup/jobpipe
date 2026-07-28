@@ -11,6 +11,7 @@ Schedule (Europe/London):
   publish   08:00
   track     hourly at :20
   indexscan Sundays 05:00
+  digest    Mondays 08:30
 """
 
 from __future__ import annotations
@@ -94,6 +95,12 @@ def job_track() -> None:
     _guarded("track", confirm.main)
 
 
+def job_digest() -> None:
+    from . import digest
+
+    _guarded("digest", digest.main)
+
+
 def start_scheduler() -> BackgroundScheduler:
     sched = BackgroundScheduler(timezone=settings.tz)
     sched.add_job(job_poll, "cron", hour="6,18", minute=0, id="poll")
@@ -103,6 +110,9 @@ def start_scheduler() -> BackgroundScheduler:
     sched.add_job(job_track, "cron", minute=20, id="track")
     sched.add_job(job_indexscan, "cron", day_of_week="sun", hour=5, minute=0,
                   id="indexscan")
+    # After Monday's 06:45 match, so the week's first run is already in it.
+    sched.add_job(job_digest, "cron", day_of_week="mon", hour=8, minute=30,
+                  id="digest")
     sched.start()
     return sched
 

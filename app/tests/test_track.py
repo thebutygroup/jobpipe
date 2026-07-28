@@ -31,3 +31,47 @@ def test_newsletter_alone_confirms_nothing(conn):
     n = confirm.match_and_confirm(conn, [
         ("news@acme.com", "Acme product update — no application here", "<id-9>", "")])
     assert n == 0
+
+
+# ---- digest opt-out: "reply STOP" has to actually do something ---------------------
+
+def _seed_applicant_with_email(conn, user_ref, addr):
+    import yaml
+    profile_yaml = yaml.safe_dump({
+        "identity": {"full_name": user_ref, "email": addr, "location": "London"},
+        "preferences": {"target_titles": ["Data Engineer"], "locations_ok": ["London"]},
+    })
+    conn.execute("INSERT INTO applicants (name, user_ref, profile_path, profile_yaml,"
+                 " active) VALUES (?,?,'',?,1)", (user_ref, user_ref, profile_yaml))
+    conn.commit()
+
+
+def test_stop_reply_opts_that_user_out(conn):
+    _seed_applicant_with_email(conn, "alice", "alice@example.com")
+    _seed_applicant_with_email(conn, "bob", "bob@example.com")
+    n = confirm.process_opt_outs(conn, [
+        ("Alice <alice@example.com>", "Re: 3 new matches this week", "<id>", "STOP"),
+    ])
+    assert n == 1
+    flags = dict(conn.execute("SELECT user_ref, digest_opt_out FROM applicants").fetchall())
+    assert flags["alice"] == 1
+    assert flags["bob"] == 0        # a STOP opts out the sender, nobody else
+
+
+def test_stop_must_be_the_whole_reply(conn):
+    """A quoted job title containing 'stop' must not unsubscribe anyone."""
+    _seed_applicant_with_email(conn, "alice", "alice@example.com")
+    n = confirm.process_opt_outs(conn, [
+        ("alice@example.com", "Re: matches", "<id>",
+         "Please stop sending me the ones in Leeds, the rest are great"),
+        ("alice@example.com", "Bus Stop Inspector at Acme", "<id2>", ""),
+    ])
+    assert n == 0
+    assert conn.execute("SELECT digest_opt_out FROM applicants"
+                        ).fetchone()["digest_opt_out"] == 0
+
+
+def test_unsubscribe_is_honoured_too(conn):
+    _seed_applicant_with_email(conn, "alice", "alice@example.com")
+    assert confirm.process_opt_outs(conn, [
+        ("alice@example.com", "Re: matches", "<id>", "Unsubscribe.")]) == 1

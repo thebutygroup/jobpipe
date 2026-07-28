@@ -254,13 +254,21 @@ def connect(db_path: str | None = None) -> sqlite3.Connection:
     if "confirm_token" not in acols:
         # secret in the signup confirmation URL (double opt-in; unguessable)
         conn.execute("ALTER TABLE applicants ADD COLUMN confirm_token TEXT")
+    if "digest_opt_out" not in acols:
+        # 1 = they replied STOP to a digest. Checked before every send.
+        conn.execute("ALTER TABLE applicants ADD COLUMN digest_opt_out "
+                     "INTEGER NOT NULL DEFAULT 0")
     if "email_confirmed_at" not in acols:
         conn.execute("ALTER TABLE applicants ADD COLUMN email_confirmed_at TEXT")
         # Grandfather everyone who already exists. Matching now requires a
         # confirmed address, and these users signed up before that rule and
         # were never asked — leaving them NULL would silently stop matching
         # for every live user the moment this migration lands.
-        conn.execute("UPDATE applicants SET email_confirmed_at = datetime('now') "
+        # strftime, not datetime('now'): every other timestamp in this DB is
+        # written by db.now() as ISO-8601 with a 'T'. datetime('now') uses a
+        # space, and the two do not compare or sort against each other.
+        conn.execute("UPDATE applicants SET email_confirmed_at = "
+                     "strftime('%Y-%m-%dT%H:%M:%S','now') "
                      "WHERE email_confirmed_at IS NULL")
     pcols = {r["name"] for r in conn.execute("PRAGMA table_info(postings)")}
     if "duplicate_of" not in pcols:

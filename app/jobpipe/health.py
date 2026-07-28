@@ -30,6 +30,7 @@ JOB_CADENCE_H = {
     "publish": 24,
     "track": 1,
     "indexscan": 24 * 7,
+    "digest": 24 * 7,
 }
 # A job is stale when its last heartbeat is older than cadence + grace.
 # Default grace = half the cadence, floor 2h (cron drift, long runs).
@@ -43,6 +44,7 @@ JOB_BLURBS = {
     "publish": "daily digest email",
     "track": "read the inbox for confirmations & outcomes",
     "indexscan": "weekly discovery of new company career pages",
+    "digest": "weekly 'new since last time' email to users",
 }
 
 DOWN, WARN, OK, OFF = "down", "warn", "ok", "off"
