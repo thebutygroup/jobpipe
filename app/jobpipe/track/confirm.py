@@ -94,6 +94,49 @@ def match_and_confirm(conn, messages) -> int:
 FWD = re.compile(r"^\s*(fwd?|fw)\s*:", re.I)
 
 
+def process_opt_outs(conn, messages) -> int:
+    """Honour "reply STOP" from the weekly digest.
+
+    The digest tells users they can reply STOP; if nothing read the replies
+    that would be a promise we don't keep, which is worse than having no
+    digest at all. Deliberately strict — the reply must be essentially just
+    the word, so a posting titled "STOP the press" quoted in a thread can't
+    silently unsubscribe someone.
+
+    Matching is by sender address against the address on each profile, so a
+    STOP from an unrelated mailbox cannot opt out somebody else.
+    """
+    from ..profile import load_applicant_profile
+
+    senders = set()
+    for sender, subject, _msg_id, body in messages:
+        first = ((body or "").strip().splitlines() or [""])[0].strip()
+        candidate = first or (subject or "").strip()
+        if re.fullmatch(r"(?i)\s*(stop|unsubscribe)\s*[.!]?", candidate or ""):
+            addr = email.utils.parseaddr(sender or "")[1].lower()
+            if addr:
+                senders.add(addr)
+    if not senders:
+        return 0
+
+    stopped = 0
+    rows = conn.execute(
+        "SELECT * FROM applicants WHERE COALESCE(digest_opt_out, 0) = 0").fetchall()
+    for row in rows:
+        try:
+            profile = load_applicant_profile(row)
+            addr = (getattr(profile.identity, "email", "") or "").strip().lower()
+        except Exception:
+            continue
+        if addr and addr in senders:
+            with tx(conn):
+                conn.execute("UPDATE applicants SET digest_opt_out = 1 WHERE id = ?",
+                             (row["id"],))
+            log.info("digest opt-out: %s replied STOP", row["user_ref"])
+            stopped += 1
+    return stopped
+
+
 def process_outcomes(conn, messages) -> int:
     """Forwarded emails (Fwd:/FW: subjects) become outcome records."""
     from .outcomes import record_outcome
@@ -133,8 +176,11 @@ def main() -> None:
                             imap_user, imap_password)
         n = match_and_confirm(conn, msgs)
         o = process_outcomes(conn, msgs)
-        heartbeat(conn, "track", ok=True, detail=f"confirmed={n} outcomes={o}")
-        log.info("confirmation tracking: %d confirmed, %d outcomes", n, o)
+        s = process_opt_outs(conn, msgs)
+        heartbeat(conn, "track", ok=True,
+                  detail=f"confirmed={n} outcomes={o} opt_outs={s}")
+        log.info("confirmation tracking: %d confirmed, %d outcomes, %d opt-outs",
+                 n, o, s)
     except Exception as e:
         heartbeat(conn, "track", ok=False, detail=str(e))
         raise

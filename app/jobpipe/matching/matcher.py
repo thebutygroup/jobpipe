@@ -213,7 +213,8 @@ def ensure_applicant(conn, profile: Profile) -> int:
     # nobody to email here, and leaving it NULL would make the matcher skip the
     # only applicant it just created.
     cur = conn.execute("INSERT INTO applicants (name, user_ref, profile_path, "
-                       "email_confirmed_at) VALUES (?, ?, ?, datetime('now'))",
+                       "email_confirmed_at) VALUES (?, ?, ?, "
+                       "strftime('%Y-%m-%dT%H:%M:%S','now'))",
                        (profile.identity.full_name, secrets.token_urlsafe(8),
                         settings.profile_path))
     return cur.lastrowid
