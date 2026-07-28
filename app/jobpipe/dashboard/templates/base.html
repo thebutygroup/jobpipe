@@ -124,6 +124,10 @@ ul{margin-left:18px;font-size:13.5px}
 .apply{display:inline-block;margin-top:8px;color:var(--accent-deep);font-size:13.5px;
   font-weight:600}
 .empty{color:var(--ink-soft);padding:40px 0;text-align:center}
+/* confirmation after an internal action — see dashboard/flash.py */
+.flash{background:var(--accent-soft);border:1px solid var(--accent);color:var(--accent-deep);
+  border-radius:var(--radius);padding:10px 16px;margin:14px 0 0;font-size:14px;
+  font-weight:600}
 form.filter{margin-bottom:14px;font-size:13px;color:var(--ink-soft)}
 /* ---- landing hero ------------------------------------------------------------ */
 .hero{text-align:center;padding:44px 0 10px}
@@ -157,6 +161,7 @@ form.filter{margin-bottom:14px;font-size:13px;color:var(--ink-soft)}
   <nav class="site">{% if not hide_internal_nav %}<a href="/queue">queue</a><a href="/all">all</a><a href="/applicants">applicants</a><a href="/stats">stats</a><a href="/sources">sources</a><a href="/health">health</a>{% else %}<a href="/onboard">sign up</a><a href="/go">my matches</a>{% endif %}</nav>
 </div></header>
 <div class="wrap">
+{% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
 {% block content %}{% endblock %}
 </div></body>
 </html>
