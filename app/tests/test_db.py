@@ -63,3 +63,43 @@ def test_transition_writes_event(conn):
     ev = conn.execute(
         "SELECT * FROM events WHERE event_type='state:PREFILTERED'").fetchone()
     assert ev is not None and ev["application_id"] == app_id
+
+
+def test_connect_sets_lock_patience(tmp_path):
+    """'database is locked' regression: writers must WAIT (60s), not fail
+    after python's default 5s."""
+    from jobpipe.db import connect
+    c = connect(str(tmp_path / "t.db"))
+    assert c.execute("PRAGMA busy_timeout").fetchone()[0] == 60000
+    c.close()
+
+
+def test_scheduler_serializes_pipeline_jobs():
+    """Two _guarded jobs never run concurrently — the second waits."""
+    import threading
+    from jobpipe import scheduler
+
+    order = []
+    gate = threading.Event()
+
+    def slow():
+        order.append("slow-start")
+        gate.wait(timeout=5)
+        order.append("slow-end")
+
+    def fast():
+        order.append("fast")
+
+    t1 = threading.Thread(target=scheduler._guarded, args=("slow", slow))
+    t2 = threading.Thread(target=scheduler._guarded, args=("fast", fast))
+    t1.start()
+    while "slow-start" not in order:
+        pass
+    t2.start()
+    import time
+    time.sleep(0.2)
+    assert "fast" not in order      # fast is blocked behind slow
+    gate.set()
+    t1.join()
+    t2.join()
+    assert order == ["slow-start", "slow-end", "fast"]

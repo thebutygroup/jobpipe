@@ -27,8 +27,19 @@ from .notify import send_failure
 
 log = logging.getLogger(__name__)
 
+# Pipeline jobs share one SQLite file — run them one at a time. Without this,
+# a long 06:00 poll (first run of new searches can take 45+ min) overlaps the
+# 06:45 match and they fight over the write lock. The lock makes late jobs
+# WAIT instead; combined with the 60s busy_timeout, 'database is locked'
+# should never page again.
+_pipeline_lock = threading.Lock()
+
 
 def _guarded(job_name: str, fn) -> None:
+    waited = not _pipeline_lock.acquire(blocking=False)
+    if waited:
+        log.info("job %s waiting: another pipeline job is still running", job_name)
+        _pipeline_lock.acquire()
     try:
         fn()
     except Exception as e:
@@ -40,6 +51,8 @@ def _guarded(job_name: str, fn) -> None:
             conn.close()
         except Exception:
             log.exception("could not record failure heartbeat for %s", job_name)
+    finally:
+        _pipeline_lock.release()
 
 
 def job_poll() -> None:
