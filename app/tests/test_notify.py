@@ -68,7 +68,8 @@ def test_mail_from_overrides_login(monkeypatch):
     assert notify.send_email(subject="s", html_body="<p>x</p>")
     frm, to, body = fake.sent[0]
     assert frm == "jobs@thebutygroup.com" and to == ["joe@gmail.com"]
-    assert "From: jobs@thebutygroup.com" in body
+    # header now carries the display name in front of the address
+    assert "jobs@thebutygroup.com" in body and "From: jobpipe <" in body
     assert not fake.starttls_called  # port 465 = implicit SSL
 
 
@@ -79,3 +80,28 @@ def test_port_587_uses_starttls(monkeypatch):
     assert notify.send_email(subject="s", html_body="x", to="user@y.com")
     assert fake.starttls_called
     assert fake.sent[0][0] == "login@x.com"  # blank MAIL_FROM -> smtp_user
+
+
+def test_from_header_carries_display_name(monkeypatch):
+    """Inbox headline must read the brand name, not the bare handle."""
+    from jobpipe import notify
+    from jobpipe.config import settings
+
+    monkeypatch.setattr(settings, "smtp_user", "jobs@thebutygroup.com")
+    monkeypatch.setattr(settings, "smtp_password", "x")
+    monkeypatch.setattr(settings, "mail_from", "")
+    monkeypatch.setattr(settings, "mail_from_name", "jobpipe")
+    monkeypatch.setattr(settings, "notify_to", "someone@example.com")
+
+    captured = {}
+
+    class FakeServer:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def login(self, *a): pass
+        def sendmail(self, sender, to, body):
+            captured["body"] = body
+
+    monkeypatch.setattr(notify, "_connect", lambda ctx: FakeServer())
+    assert notify.send_email("s", "<p>b</p>")
+    assert "From: jobpipe <jobs@thebutygroup.com>" in captured["body"]

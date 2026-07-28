@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     # Blank = use smtp_user (correct for Gmail; wrong for Brevo-style relays
     # whose smtp_user is a login, not an address).
     mail_from: str = ""
+    # Display name shown as the sender headline in inboxes ("jobpipe
+    # <jobs@...>"). Without it, mail apps invent one from the handle: "jobs".
+    mail_from_name: str = "jobpipe"
     # IMAP (outcome tracking) may use a different account than SMTP (e.g. a
     # transactional sender like Brevo has no mailbox). Blank = reuse SMTP creds.
     imap_user: str = ""

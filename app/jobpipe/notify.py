@@ -13,6 +13,7 @@ import smtplib
 import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formataddr
 
 from .config import settings
 
@@ -33,7 +34,10 @@ def send_email(subject: str, html_body: str, text_body: str = "", to: str = "") 
         return False
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = sender
+    # Display name + address: inboxes headline the NAME ("jobpipe"), not the
+    # bare handle ("jobs"). The address itself is unchanged — DKIM/SPF and
+    # the verified sender stay exactly as configured.
+    msg["From"] = formataddr((settings.mail_from_name, sender))
     msg["To"] = recipient
     msg.attach(MIMEText(text_body or "See HTML version.", "plain"))
     msg.attach(MIMEText(html_body, "html"))
