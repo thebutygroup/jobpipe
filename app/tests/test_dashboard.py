@@ -76,7 +76,8 @@ def test_approve_and_reject_return_to_queue(conn, monkeypatch):
     client = Client()
     r = client.post(f"/app/{app_id}/approve")
     assert r.status_code == 302
-    assert r.headers["Location"] == "/queue"   # back to the queue, not the public landing
+    # back to the queue, not the public landing — and say so when you land
+    assert r.headers["Location"] == "/queue?done=approved"
 
     # reject path: needs a fresh app in PENDING_REVIEW
     pid2, _ = upsert_posting(conn, PostingDTO(
@@ -91,7 +92,43 @@ def test_approve_and_reject_return_to_queue(conn, monkeypatch):
                            ).fetchone()["id"]
     r = client.post(f"/app/{app_id2}/reject")
     assert r.status_code == 302
-    assert r.headers["Location"] == "/queue"
+    assert r.headers["Location"] == "/queue?done=rejected"
+
+
+def test_action_returns_to_the_page_it_was_fired_from(conn, monkeypatch):
+    """Approving from /app/<id> should not dump you on /queue, and vice versa."""
+    _point_db(monkeypatch, conn)
+    answers = '{"sponsor": {"label": "visa", "required": true, "value": "No", "unknown": false}}'
+    app_id = seed_pending(conn, answers_json=answers)
+    client = Client()
+    r = client.post(f"/app/{app_id}/approve", HTTP_REFERER=f"http://testserver/app/{app_id}")
+    assert r.headers["Location"] == f"/app/{app_id}?done=approved"
+
+
+def test_flash_banner_renders_and_only_for_known_slugs(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    seed_pending(conn)
+    client = Client()
+    assert b"approved \xe2\x9c\x93" in client.get("/queue?done=approved").content
+    # an arbitrary sentence in the URL must not be painted into jobpipe's chrome
+    junk = client.get("/queue?done=your+account+is+suspended,+call+555").content
+    assert b"account is suspended" not in junk
+    assert b'class="flash"' not in junk
+
+
+def test_referer_cannot_bounce_a_reviewer_off_site(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    answers = '{"sponsor": {"label": "visa", "required": true, "value": "No", "unknown": false}}'
+    app_id = seed_pending(conn, answers_json=answers)
+    client = Client()
+    for referer in ("https://evil.example/queue",      # host is discarded...
+                    "http://testserver//evil.example",  # ...and so is protocol-relative
+                    "http://testserver/job_matches/someone"):
+        r = client.post(f"/app/{app_id}/approve", HTTP_REFERER=referer)
+        assert r.headers["Location"] == "/queue?done=approved", referer
+        # the approve only succeeds once; re-seed for the next referer
+        conn.execute("UPDATE applications SET state='PENDING_REVIEW' WHERE id=?", (app_id,))
+        conn.commit()
 
 
 def test_sources_page_renders(conn, monkeypatch):

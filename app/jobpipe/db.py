@@ -222,8 +222,13 @@ def now() -> str:
 
 
 def connect(db_path: str | None = None) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path or settings.db_path)
+    # timeout=60: SQLite writers are serialized, and on a Windows bind mount a
+    # big poll transaction can hold the lock for many seconds. Python's default
+    # 5s patience produced 'database is locked' when the 06:45 match met a
+    # still-running 06:00 poll — waiting is correct, failing is not.
+    conn = sqlite3.connect(db_path or settings.db_path, timeout=60.0)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=60000")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)

@@ -25,7 +25,7 @@ TEMPLATES = [{
     "BACKEND": "django.template.backends.django.DjangoTemplates",
     "DIRS": [BASE_DIR / "templates"],
     "APP_DIRS": False,
-    "OPTIONS": {"context_processors": []},
+    "OPTIONS": {"context_processors": ["jobpipe.dashboard.flash.banner"]},
 }]
 USE_TZ = True
 # Django's implicit default is America/Chicago and it exports TZ to the whole

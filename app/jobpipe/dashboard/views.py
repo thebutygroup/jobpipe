@@ -17,6 +17,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from ..db import IllegalTransition, connect, now, transition, tx
 from ..models import APPROVED, PENDING_REVIEW, REJECTED_HUMAN, SUBMITTING
+from . import flash
 
 log = logging.getLogger(__name__)
 
@@ -301,7 +302,7 @@ def app_save(request, app_id: int):
         conn.commit()
     finally:
         conn.close()
-    return redirect(f"/app/{app_id}")
+    return flash.back_to(request, "saved", f"/app/{app_id}")
 
 
 @require_POST
@@ -323,7 +324,7 @@ def app_approve(request, app_id: int):
             return HttpResponseBadRequest(str(e))
     finally:
         conn.close()
-    return redirect("/queue")
+    return flash.back_to(request, "approved", "/queue")
 
 
 @require_POST
@@ -337,7 +338,7 @@ def app_reject(request, app_id: int):
             return HttpResponseBadRequest(str(e))
     finally:
         conn.close()
-    return redirect("/queue")
+    return flash.back_to(request, "rejected", "/queue")
 
 
 @require_POST
@@ -351,7 +352,7 @@ def app_resume(request, app_id: int):
             return HttpResponseBadRequest(str(e))
     finally:
         conn.close()
-    return redirect(f"/app/{app_id}")
+    return flash.back_to(request, "resumed", f"/app/{app_id}")
 
 
 @require_GET
@@ -624,7 +625,7 @@ def app_applied(request, app_id: int):
             return HttpResponseBadRequest(str(e))
     finally:
         conn.close()
-    return redirect(f"/app/{app_id}")
+    return flash.back_to(request, "applied", f"/app/{app_id}")
 
 
 USERNAME_RE = __import__("re").compile(r"^[A-Za-z0-9_-]{1,30}$")
