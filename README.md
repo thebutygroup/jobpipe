@@ -27,11 +27,14 @@ Live at [jobs.thebutygroup.com](https://jobs.thebutygroup.com).
 - **Source analytics** (`/sources`) — which sources earn their keep:
   uniqueness %, pairwise overlap matrix, who-saw-it-first, volume/day, and
   match quality per source, all derived at read time from provenance.
-- **Self-serve signup with guardrails** — signups auto-activate up to
-  `SIGNUP_DAILY_CAP`/day (default 3) and get an instant mini match run
-  (`SIGNUP_INSTANT_MATCHES` newest postings, default 20). Beyond the cap:
-  pending + a flag banner + an owner email. Every signup emails the owner;
-  users who give an email get a branded welcome. LLM spend is bounded by
+- **Self-serve signup, confirmed by email** — signing up is inert until the
+  address is proven: the account is created inactive and gets exactly one
+  email, a confirmation link. Nothing is matched, and no model call is spent,
+  until it's clicked. Confirming is what activates the account (up to
+  `SIGNUP_DAILY_CAP`/day, default 3), fires the instant mini match run
+  (`SIGNUP_INSTANT_MATCHES` newest postings, default 20) and sends the branded
+  welcome. Beyond the cap: pending + a flag banner + an owner email. The owner
+  is told about every signup either way. LLM spend is bounded by
   `MATCH_DAILY_CALL_CAP` regardless.
 - **Per-user match pages** — `/job_matches/<name>` (cards with highlights and
   a you-want/job-offers alignment table) and `/all/<name>` (dense sortable
@@ -61,6 +64,10 @@ searches.yaml / companies registry
    postings (canonical jobs) ←── source_postings (per-source provenance)
                ▼
    prefilter → Haiku matcher → per-user match pages → review → submit
+                    ▲
+                    │ scored only for applicants that are active,
+                    │ email-confirmed and not shadow-banned
+   signup → confirmation email → /confirm/<user>/<token> → activate
 ```
 
 Runtime: three containers (Django dashboard behind gunicorn, APScheduler
@@ -91,9 +98,11 @@ appeals.
 
 ## Development
 
-- **Tests**: `cd app && pip install -e ".[dev]" && pytest` (~120 tests:
+- **Tests**: `cd app && pip install -e ".[dev]" && pytest` (~205 tests:
   adapter normalization against fixtures, dedupe nasty cases, migration,
-  signup/auto-activation, analytics math, dashboard rendering).
+  signup/confirmation/auto-activation, analytics math, dashboard rendering).
+  Many are named after the incident that motivated them — when you fix a bug,
+  leave a test behind that would have caught it.
   `scripts/record_fixtures.py` verifies live API keys and records real
   responses as fixtures that CI then validates against.
 - **Lint**: `ruff check .` — CI (`.github/workflows/ci.yml`) runs ruff +
@@ -121,16 +130,18 @@ match pages with in-place confirmation, and lightweight auth to protect it.
 Supporting improvements (from live user testing):
 
 1. **UI look & feel** — continued polish beyond the token-system foundation.
-2. **In-place action feedback** — application actions currently bounce to the
-   home page; they should confirm inline without navigation.
-3. **Built In cookie handling** — the scraper currently rides a single
+2. **Built In cookie handling** — the scraper currently rides a single
    personal cookie; multiple users need per-session or cookie-less handling.
-4. **Structured user testing** — first cohort feedback: what's good, what's bad.
+3. **Structured user testing** — first cohort feedback: what's good, what's bad.
+4. **A recurring digest** — there is still no periodic "new since last time"
+   email for existing users, only the one-time matches-ready send.
 
-Further out: email↔username linkage (one email = one account), email
-verification links on signup, self-serve profile editing, recruiter-agency
-dedupe (Reed), Cloud Run + Cloud SQL port (`deploy/gcp/RUNBOOK.md` is the
-stepping stone).
+Further out: email↔username linkage (one email = one account), a JSON API for
+a native mobile client, recruiter-agency dedupe (Reed), Cloud Run + Cloud SQL
+port (`deploy/gcp/RUNBOOK.md` is the stepping stone).
+
+Recently shipped: email-confirmed signup (double opt-in), self-serve profile
+editing, and in-place action feedback on the review queue.
 
 ## Safety
 
