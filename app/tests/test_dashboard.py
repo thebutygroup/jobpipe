@@ -204,24 +204,80 @@ def test_public_all_view_rejects_post(conn, monkeypatch):
 # ---- self-serve signup: minimal fields, auto-activation, daily cap ------------------
 
 def _signup(client, name, **extra):
+    extra.setdefault("email", f"{name}@example.com")
     return client.post("/onboard", {
         "full_name": name, "target_titles": "Senior Data Engineer",
         "positioning": "Hands-on data platform work at a company that ships.",
         **extra})
 
 
-def test_minimal_signup_activates_and_starts_matching(conn, monkeypatch):
+def _confirm(client, conn, name):
+    """Click the confirmation link the way the user would."""
+    token = conn.execute("SELECT confirm_token FROM applicants WHERE user_ref=?",
+                         (name,)).fetchone()["confirm_token"]
+    return client.get(f"/confirm/{name}/{token}")
+
+
+def test_signup_is_inert_until_the_email_is_confirmed(conn, monkeypatch):
+    """Double opt-in: signing up must not activate, match, or cost model calls."""
     _point_db(monkeypatch, conn)
     from jobpipe.dashboard import views as v
     runs = []
     monkeypatch.setattr(v, "_instant_mini_run", lambda ref: runs.append(ref))
     r = _signup(Client(), "maya")
-    assert r.status_code == 200 and b"maya" in r.content
-    assert b"Matching has started" in r.content
-    row = conn.execute("SELECT active, user_ref, profile_yaml FROM applicants").fetchone()
-    assert row["active"] == 1 and row["user_ref"] == "maya"
-    assert "Senior Data Engineer" in row["profile_yaml"]
-    assert runs == ["maya"]  # instant mini-run kicked off
+    assert r.status_code == 200 and b"One more step" in r.content
+    row = conn.execute("SELECT active, user_ref, profile_yaml, confirm_token,"
+                       " email_confirmed_at FROM applicants").fetchone()
+    assert row["active"] == 0 and row["user_ref"] == "maya"
+    assert row["email_confirmed_at"] is None
+    assert row["confirm_token"]           # a link was issued...
+    assert runs == []                     # ...but nothing was matched
+
+
+def test_confirming_activates_and_starts_matching(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    from jobpipe.dashboard import views as v
+    runs = []
+    monkeypatch.setattr(v, "_instant_mini_run", lambda ref: runs.append(ref))
+    monkeypatch.setattr(v, "_async", lambda fn, *a: None)
+    c = Client()
+    _signup(c, "maya")
+    r = _confirm(c, conn, "maya")
+    assert r.status_code == 200 and b"Email confirmed" in r.content
+    row = conn.execute("SELECT active, email_confirmed_at FROM applicants").fetchone()
+    assert row["active"] == 1 and row["email_confirmed_at"]
+    assert runs == ["maya"]                # NOW the instant mini-run fires
+
+
+def test_confirm_rejects_bad_token_and_is_idempotent(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    from jobpipe.dashboard import views as v
+    runs = []
+    monkeypatch.setattr(v, "_instant_mini_run", lambda ref: runs.append(ref))
+    monkeypatch.setattr(v, "_async", lambda fn, *a: None)
+    c = Client()
+    _signup(c, "maya")
+    assert c.get("/confirm/maya/not-the-token").status_code == 404
+    assert conn.execute("SELECT active FROM applicants").fetchone()["active"] == 0
+    assert c.get("/confirm/nobody/x").status_code == 404
+    _confirm(c, conn, "maya")
+    # mail clients prefetch links and people re-click them: a second visit must
+    # read as success without re-activating or re-running the matcher
+    again = _confirm(c, conn, "maya")
+    assert again.status_code == 200 and b"Email confirmed" in again.content
+    assert runs == ["maya"]
+
+
+def test_unconfirmed_users_are_never_matched(conn, monkeypatch):
+    """The gate the whole feature rests on, asserted at the matcher itself."""
+    _point_db(monkeypatch, conn)
+    conn.execute("INSERT INTO applicants (name, profile_path, user_ref, active,"
+                 " email_confirmed_at) VALUES ('c','p','confirmed',1,datetime('now'))")
+    conn.execute("INSERT INTO applicants (name, profile_path, user_ref, active,"
+                 " email_confirmed_at) VALUES ('u','p','unconfirmed',1,NULL)")
+    conn.commit()
+    from jobpipe.matching.matcher import select_matchable
+    assert [r["user_ref"] for r in select_matchable(conn)] == ["confirmed"]
 
 
 def test_signup_requires_title_and_sentence(conn, monkeypatch):
@@ -236,12 +292,16 @@ def test_signup_requires_title_and_sentence(conn, monkeypatch):
     assert conn.execute("SELECT COUNT(*) c FROM applicants").fetchone()["c"] == 0
 
 
-def test_signup_email_is_optional(conn, monkeypatch):
+def test_signup_requires_a_usable_email(conn, monkeypatch):
     _point_db(monkeypatch, conn)
     from jobpipe.dashboard import views as v
     monkeypatch.setattr(v, "_instant_mini_run", lambda ref: None)
-    assert _signup(Client(), "noemail").status_code == 200
-    assert _signup(Client(), "hasemail", email="x@y.com").status_code == 200
+    c = Client()
+    for bad in ("", "   ", "not-an-email", "no@tld", "two@@at.com", "sp ace@x.com"):
+        r = _signup(c, "maya", email=bad)
+        assert r.status_code == 400, bad
+    assert conn.execute("SELECT COUNT(*) c FROM applicants").fetchone()["c"] == 0
+    assert _signup(c, "maya", email="maya@example.com").status_code == 200
 
 
 def test_signup_daily_cap_flags_for_joe(conn, monkeypatch):
@@ -255,14 +315,18 @@ def test_signup_daily_cap_flags_for_joe(conn, monkeypatch):
     import jobpipe.notify as notify
     monkeypatch.setattr(notify, "send_email", lambda **kw: emails.append(kw) or True)
     c = Client()
-    assert b"Matching has started" in _signup(c, "one").content
-    assert b"Matching has started" in _signup(c, "two").content
-    r3 = _signup(c, "three")  # over cap -> pending + flagged
+    # the cap now bites at CONFIRMATION, not signup — that's where activation
+    # (and the model spend) actually happens
+    for name in ("one", "two", "three"):
+        _signup(c, name)
+    assert b"Matching has started" in _confirm(c, conn, "one").content
+    assert b"Matching has started" in _confirm(c, conn, "two").content
+    r3 = _confirm(c, conn, "three")  # over cap -> pending + flagged
     assert r3.status_code == 200 and b"human review" in r3.content
     row = conn.execute("SELECT active FROM applicants WHERE user_ref='three'").fetchone()
     assert row["active"] == 0
     assert v.signups_capped_today(conn) == 1
-    assert emails and "cap hit" in emails[-1]["subject"]  # last email = the capped one
+    assert any("cap hit" in e["subject"] for e in emails)
     # the flag is visible on internal pages
     q = c.get("/queue")
     assert b"auto-activation cap" in q.content
@@ -281,11 +345,17 @@ def test_every_signup_notifies_joe(conn, monkeypatch):
     import jobpipe.notify as notify
     monkeypatch.setattr(notify, "send_email", lambda **kw: emails.append(kw) or True)
     c = Client()
-    _signup(c, "first")   # auto-activated
-    _signup(c, "second")  # cap hit
-    assert len(emails) == 2
-    assert "new signup: first" in emails[0]["subject"] and "1/1" in emails[0]["subject"]
-    assert "PENDING: second" in emails[1]["subject"]
+    _signup(c, "first")
+    _signup(c, "second")
+    # every signup is announced immediately, confirmed or not
+    assert [e for e in emails if "awaiting confirmation: first" in e["subject"]]
+    assert [e for e in emails if "awaiting confirmation: second" in e["subject"]]
+    emails.clear()
+    _confirm(c, conn, "first")    # auto-activated
+    _confirm(c, conn, "second")   # cap hit
+    assert any("new signup: first" in e["subject"] and "1/1" in e["subject"]
+               for e in emails)
+    assert any("PENDING: second" in e["subject"] for e in emails)
 
 
 def test_signup_with_email_gets_welcome(conn, monkeypatch):
@@ -297,7 +367,10 @@ def test_signup_with_email_gets_welcome(conn, monkeypatch):
     import jobpipe.notify as notify
     monkeypatch.setattr(notify, "send_email",
                         lambda **kw: sent.append(kw) or True)
-    _signup(Client(), "maya", email="maya@example.com")
+    c = Client()
+    _signup(c, "maya", email="maya@example.com")
+    sent.clear()                       # the confirmation link already went
+    _confirm(c, conn, "maya")          # the welcome is earned by confirming
     welcome = [e for e in sent if e.get("to") == "maya@example.com"]
     assert len(welcome) == 1
     assert "Welcome" in welcome[0]["subject"]
@@ -307,7 +380,8 @@ def test_signup_with_email_gets_welcome(conn, monkeypatch):
     assert any("new signup: maya" in e["subject"] and not e.get("to") for e in sent)
 
 
-def test_signup_without_email_sends_no_welcome(conn, monkeypatch):
+def test_unconfirmed_signup_gets_only_the_confirmation_email(conn, monkeypatch):
+    """An unproven address must not be mailed anything except the one link."""
     _point_db(monkeypatch, conn)
     from jobpipe.dashboard import views as v
     monkeypatch.setattr(v, "_async", lambda fn, *a: fn(*a))
@@ -316,11 +390,13 @@ def test_signup_without_email_sends_no_welcome(conn, monkeypatch):
     import jobpipe.notify as notify
     monkeypatch.setattr(notify, "send_email",
                         lambda **kw: sent.append(kw) or True)
-    _signup(Client(), "quiet")
-    assert not any(e.get("to") for e in sent)      # no user-facing mail
-    joe = [e for e in sent if "new signup: quiet" in e["subject"]]
-    assert joe                                      # Joe ALWAYS told
-    assert "No email provided" in joe[0]["html_body"]  # ...and told they're unreachable
+    _signup(Client(), "quiet", email="quiet@example.com")
+    to_user = [e for e in sent if e.get("to") == "quiet@example.com"]
+    assert len(to_user) == 1 and "Confirm your email" in to_user[0]["subject"]
+    assert "/confirm/quiet/" in to_user[0]["html_body"]
+    assert not any("Welcome" in e["subject"] for e in sent)  # welcome waits
+    joe = [e for e in sent if "awaiting confirmation" in e["subject"]]
+    assert joe                                       # Joe still always told
 
 
 def test_signup_response_is_instant_even_if_smtp_hangs(conn, monkeypatch):
@@ -339,7 +415,7 @@ def test_signup_response_is_instant_even_if_smtp_hangs(conn, monkeypatch):
     monkeypatch.setattr(notify, "send_email", hang)
     r = _signup(Client(), "instant", email="x@y.com")
     assert r.status_code == 200 and b"instant" in r.content
-    assert spawned == ["_signup_emails"]  # dispatched async, not executed inline
+    assert spawned == ["_send_confirm_email"]  # dispatched async, not executed inline
 
 
 def test_welcome_email_invites_more_detail(conn, monkeypatch):
@@ -350,7 +426,10 @@ def test_welcome_email_invites_more_detail(conn, monkeypatch):
     sent = []
     import jobpipe.notify as notify
     monkeypatch.setattr(notify, "send_email", lambda **kw: sent.append(kw) or True)
-    _signup(Client(), "maya2", email="maya@example.com")
+    c = Client()
+    _signup(c, "maya2", email="maya@example.com")
+    sent.clear()
+    _confirm(c, conn, "maya2")
     welcome = [e for e in sent if e.get("to")][0]
     assert "Reply to this email" in welcome["html_body"]
 

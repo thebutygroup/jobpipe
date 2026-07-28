@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}{% if ok %}email confirmed — jobpipe{% else %}link not recognised — jobpipe{% endif %}{% endblock %}
+{% block content %}
+{% if ok %}
+<div class="hero">
+  <h1>Email confirmed 🌱</h1>
+  {% if activated %}
+  <p class="lede">Matching has started — your first scored matches usually
+  appear within the hour, and new jobs are matched to you twice a day.</p>
+  {% else %}
+  <p class="lede">Your email is confirmed and your profile is queued — matching
+  starts after a quick human review, usually within a day.</p>
+  {% endif %}
+</div>
+<div class="card" style="max-width:560px;margin:0 auto">
+  <h2>Your matches live here</h2>
+  <p style="margin:8px 0"><a href="/job_matches/{{ user_ref }}"><strong>{{ request.get_host }}/job_matches/{{ user_ref }}</strong></a> <span class="meta">— cards with the full "why it fits"</span></p>
+  <p style="margin:8px 0"><a href="/all/{{ user_ref }}"><strong>{{ request.get_host }}/all/{{ user_ref }}</strong></a> <span class="meta">— the dense table view</span></p>
+  <p class="meta">The pages are yours alone and show no name or contact
+  details. Bookmark one!</p>
+</div>
+{% else %}
+<div class="hero">
+  <h1>That link didn't work</h1>
+  <p class="lede">It may have been mistyped, or the signup it belonged to is
+  gone. Nothing has been matched to that address.</p>
+  <p><a class="btn" href="/onboard">Sign up again</a></p>
+</div>
+{% endif %}
+{% endblock %}

@@ -251,6 +251,17 @@ def connect(db_path: str | None = None) -> sqlite3.Connection:
         # 1 = pipeline silently ignores them (matching, searches, emails);
         # their pages still render so nothing looks different from outside
         conn.execute("ALTER TABLE applicants ADD COLUMN shadow_banned INTEGER NOT NULL DEFAULT 0")
+    if "confirm_token" not in acols:
+        # secret in the signup confirmation URL (double opt-in; unguessable)
+        conn.execute("ALTER TABLE applicants ADD COLUMN confirm_token TEXT")
+    if "email_confirmed_at" not in acols:
+        conn.execute("ALTER TABLE applicants ADD COLUMN email_confirmed_at TEXT")
+        # Grandfather everyone who already exists. Matching now requires a
+        # confirmed address, and these users signed up before that rule and
+        # were never asked — leaving them NULL would silently stop matching
+        # for every live user the moment this migration lands.
+        conn.execute("UPDATE applicants SET email_confirmed_at = datetime('now') "
+                     "WHERE email_confirmed_at IS NULL")
     pcols = {r["name"] for r in conn.execute("PRAGMA table_info(postings)")}
     if "duplicate_of" not in pcols:
         conn.execute("ALTER TABLE postings ADD COLUMN duplicate_of INTEGER REFERENCES postings(id)")

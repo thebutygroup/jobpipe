@@ -185,13 +185,35 @@ def order_pending(pending: list) -> tuple[list, list]:
     return primary, secondary
 
 
+def select_matchable(conn, only: int | None = None) -> list:
+    """The applicants the matcher is allowed to spend model calls on.
+
+    Three gates, all of which have cost a real incident if forgotten:
+      active            — not queued behind the signup cap or deactivated
+      email_confirmed_at— double opt-in; an unproven address gets nothing
+      shadow_banned     — silently ignored, page still renders
+
+    Kept as a function so the rules are asserted in tests rather than
+    hand-copied into them.
+    """
+    return conn.execute(
+        "SELECT * FROM applicants WHERE active = 1"
+        " AND email_confirmed_at IS NOT NULL"
+        " AND COALESCE(shadow_banned, 0) = 0" +
+        (" AND id = ?" if only else ""), (only,) if only else ()).fetchall()
+
+
 def ensure_applicant(conn, profile: Profile) -> int:
     row = conn.execute("SELECT id FROM applicants WHERE active = 1 LIMIT 1").fetchone()
     if row:
         return row["id"]
     import secrets
-    cur = conn.execute("INSERT INTO applicants (name, user_ref, profile_path) "
-                       "VALUES (?, ?, ?)",
+    # Pre-confirmed: this is the file-based owner profile bootstrapping a fresh
+    # DB, not a web signup. Double opt-in guards the public form; there is
+    # nobody to email here, and leaving it NULL would make the matcher skip the
+    # only applicant it just created.
+    cur = conn.execute("INSERT INTO applicants (name, user_ref, profile_path, "
+                       "email_confirmed_at) VALUES (?, ?, ?, datetime('now'))",
                        (profile.identity.full_name, secrets.token_urlsafe(8),
                         settings.profile_path))
     return cur.lastrowid
@@ -350,10 +372,7 @@ def main() -> None:
         # bootstrap: file profile becomes applicant #1 on a fresh DB
         if not conn.execute("SELECT 1 FROM applicants LIMIT 1").fetchone():
             ensure_applicant(conn, load_profile(settings.profile_path))
-        rows = conn.execute(
-            "SELECT * FROM applicants WHERE active = 1"
-            " AND COALESCE(shadow_banned, 0) = 0" +
-            (" AND id = ?" if only else ""), (only,) if only else ()).fetchall()
+        rows = select_matchable(conn, only)
         if only and not rows:
             raise SystemExit(f"no active applicant with id {only}")
         all_stats = {}

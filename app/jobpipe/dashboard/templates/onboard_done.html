@@ -2,6 +2,23 @@
 {% block title %}you're in — jobpipe{% endblock %}
 {% block content %}
 <div class="hero">
+  {% if awaiting_confirm %}
+  <h1>One more step, {{ name }} 🌱</h1>
+  <p class="lede">We've sent a confirmation link to
+  <strong>{{ email }}</strong>. Click it and matching starts straight away —
+  until then nothing is matched to you.</p>
+  <p class="meta">No email after a minute or two? Check spam, or
+  <a href="/onboard">sign up again</a> — the link is the only thing standing
+  between you and your matches.</p>
+</div>
+<div class="card" style="max-width:560px;margin:0 auto">
+  <h2>Once you've confirmed, your matches live here</h2>
+  <p style="margin:8px 0"><a href="/job_matches/{{ user_ref }}"><strong>{{ request.get_host }}/job_matches/{{ user_ref }}</strong></a> <span class="meta">— cards with the full "why it fits"</span></p>
+  <p style="margin:8px 0"><a href="/all/{{ user_ref }}"><strong>{{ request.get_host }}/all/{{ user_ref }}</strong></a> <span class="meta">— the dense table view</span></p>
+  <p class="meta">Easy to remember — it's just your user name. The pages are
+  yours alone and show no name or contact details. Bookmark one!</p>
+</div>
+{% else %}
   <h1>You're in, {{ name }} 🌱</h1>
   {% if activated %}
   <p class="lede">Matching has started — your first scored matches usually
@@ -18,4 +35,5 @@
   <p class="meta">Easy to remember — it's just your user name. The pages are
   yours alone and show no name or contact details. Bookmark one!</p>
 </div>
+{% endif %}
 {% endblock %}

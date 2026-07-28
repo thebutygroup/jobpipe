@@ -629,6 +629,19 @@ def app_applied(request, app_id: int):
 
 
 USERNAME_RE = __import__("re").compile(r"^[A-Za-z0-9_-]{1,30}$")
+# Deliberately permissive: the confirmation round-trip is what actually proves
+# an address, so this only rejects what cannot possibly be deliverable.
+EMAIL_RE = __import__("re").compile(r"^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$")
+
+
+def _email_error(email: str) -> str:
+    """Signup requires a reachable address — matching is gated on confirming it."""
+    if not (email or "").strip():
+        return ("an email address is required — we send a confirmation link, "
+                "and matching starts once you click it")
+    if not EMAIL_RE.match(email.strip()):
+        return "that doesn't look like an email address"
+    return ""
 
 
 def _username_error(conn, name: str) -> str:
@@ -779,6 +792,51 @@ def _send_welcome(user_ref: str, email: str, activated: bool) -> None:
     _record_email_event("welcome", user_ref, ok, to=email.strip())
 
 
+def _send_confirm_email(user_ref: str, email: str, token: str) -> None:
+    """The one email an unconfirmed signup gets. Until it's clicked, the
+    account is inert: no matching, no other mail."""
+    from ..config import settings as _settings
+    base = (_settings.dashboard_base_url or "").rstrip("/")
+    link = f"{base}/confirm/{user_ref}/{token}"
+    ok = False
+    try:
+        from .. import notify
+        ok = notify.send_email(
+            to=email.strip(),
+            subject="Confirm your email to start matching — jobpipe",
+            html_body=(
+                f"<p>Almost there, <b>{user_ref}</b> 🌱</p>"
+                f"<p>Confirm this address and jobpipe starts matching jobs to "
+                f"your profile straight away:</p>"
+                f"<p><a href='{link}'>{link}</a></p>"
+                f"<p>Nothing is matched to you until you do — if this wasn't "
+                f"you, ignore this email and nothing further happens.</p>"),
+            text_body=(f"Almost there, {user_ref}!\n\nConfirm your email to "
+                       f"start matching:\n{link}\n\nNothing is matched to you "
+                       f"until you do. If this wasn't you, ignore this email."))
+    except Exception:
+        log.exception("confirmation email failed for %s", user_ref)
+    log.info("signup email [confirm] user=%s to=%s sent=%s", user_ref, email.strip(), ok)
+    _record_email_event("confirm", user_ref, ok, to=email.strip())
+    _notify_joe(
+        subject=f"[jobpipe] new signup awaiting confirmation: {user_ref}",
+        html_body=f"<p><b>{user_ref}</b> signed up with {email.strip()} and was "
+                  f"sent a confirmation link (delivered: {ok}). They stay inert "
+                  f"— no matching, no further mail — until they click it.</p>",
+        user_ref=user_ref)
+
+
+def _begin_signup(conn, user_ref: str, email: str) -> None:
+    """Issue a confirmation token and mail it. Deliberately does NOT activate:
+    activation (and the instant mini run) happens in confirm_signup."""
+    from ..confirm import ensure_confirm_token
+
+    row = conn.execute("SELECT id FROM applicants WHERE user_ref = ?",
+                       (user_ref,)).fetchone()
+    token = ensure_confirm_token(conn, row["id"])
+    _async(_send_confirm_email, user_ref, email, token)
+
+
 def _activate_or_flag(conn, user_ref: str) -> tuple[bool, int]:
     """Auto-activate a signup if under today's cap, or leave it pending and
     flag it. Returns (activated, activations_today). Emails are NOT sent here
@@ -867,6 +925,12 @@ def onboard(request):
         except ProfileError as e:
             return render(request, "onboard.html",
                           {"error": str(e), "form": f, "hide_internal_nav": True}, status=400)
+        # The pasted-YAML path is a shortcut, not an exemption: matching is
+        # gated on a confirmed address whichever way you sign up.
+        err = _email_error(prof.identity.email)
+        if err:
+            return render(request, "onboard.html",
+                          {"error": err, "form": f, "hide_internal_nav": True}, status=400)
         conn = connect()
         try:
             err = _username_error(conn, prof.identity.full_name)
@@ -880,19 +944,23 @@ def onboard(request):
                     "INSERT INTO applicants (name, profile_path, profile_yaml,"
                     " user_ref, active) VALUES (?, '', ?, ?, 0)",
                     (prof.identity.full_name, yaml_override, user_ref))
-            activated, n_today = _activate_or_flag(conn, user_ref)
+            _begin_signup(conn, user_ref, prof.identity.email)
         finally:
             conn.close()
-        _async(_signup_emails, user_ref, prof.identity.email, activated, n_today)
         return render(request, "onboard_done.html",
                       {"name": prof.identity.full_name, "user_ref": user_ref,
-                       "activated": activated, "hide_internal_nav": True})
+                       "awaiting_confirm": True, "email": prof.identity.email.strip(),
+                       "hide_internal_nav": True})
 
     titles = [t.strip() for t in (f.get("target_titles") or "").split(",") if t.strip()]
     if not titles:
         return render(request, "onboard.html",
                       {"error": "tell us at least one job title you want",
                        "form": f, "hide_internal_nav": True}, status=400)
+    err = _email_error(f.get("email") or "")
+    if err:
+        return render(request, "onboard.html",
+                      {"error": err, "form": f, "hide_internal_nav": True}, status=400)
     if not (f.get("positioning") or "").strip():
         return render(request, "onboard.html",
                       {"error": "one sentence on what you're looking for is required — "
@@ -947,13 +1015,50 @@ def onboard(request):
                 "INSERT INTO applicants (name, profile_path, profile_yaml,"
                 " user_ref, active) VALUES (?, '', ?, ?, 0)",
                 (data["identity"]["full_name"], yaml_text, user_ref))
-        activated, n_today = _activate_or_flag(conn, user_ref)
+        _begin_signup(conn, user_ref, data["identity"]["email"])
     finally:
         conn.close()
-    _async(_signup_emails, user_ref, data["identity"]["email"], activated, n_today)
     return render(request, "onboard_done.html",
                   {"name": data["identity"]["full_name"], "user_ref": user_ref,
-                   "activated": activated, "hide_internal_nav": True})
+                   "awaiting_confirm": True, "email": data["identity"]["email"],
+                   "hide_internal_nav": True})
+
+
+@require_GET
+def confirm_signup(request, user_ref: str, token: str):
+    """Redeem the confirmation link — the moment a signup becomes real.
+
+    Only here does the account activate (subject to the same SIGNUP_DAILY_CAP
+    as before) and only here does the instant mini match run fire. Re-clicking
+    a spent link is harmless: it renders the same success page without
+    re-activating or re-mailing."""
+    from ..confirm import confirm as redeem
+
+    conn = connect()
+    try:
+        row = redeem(conn, user_ref, token)
+        if row is None:
+            return render(request, "confirmed.html",
+                          {"ok": False, "hide_internal_nav": True}, status=404)
+        already_active = bool(row["active"])
+        if already_active:
+            activated, n_today = True, 0
+        else:
+            activated, n_today = _activate_or_flag(conn, user_ref)
+    finally:
+        conn.close()
+    if not already_active:
+        email = ""
+        try:
+            import yaml as _yaml
+            email = (((_yaml.safe_load(row["profile_yaml"] or "") or {})
+                      .get("identity") or {}).get("email") or "")
+        except Exception:
+            log.exception("could not read email for %s after confirm", user_ref)
+        _async(_signup_emails, user_ref, email, activated, n_today)
+    return render(request, "confirmed.html",
+                  {"ok": True, "user_ref": user_ref, "activated": activated,
+                   "hide_internal_nav": True})
 
 
 @require_GET

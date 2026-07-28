@@ -24,8 +24,8 @@ b.disabled=true;b.textContent='Creating your page…';return true;}
     <input name="target_titles" value="{{ form.target_titles }}" required placeholder="e.g. Head of Data, Data Director, Analytics Lead">
     <label>What are you looking for? * <span>(one sentence is enough — this drives the matching)</span></label>
     <textarea name="positioning" rows="3" required placeholder="I'm a ... looking for ... What matters to me is ...">{{ form.positioning }}</textarea>
-    <label>Email <span>(optional — only to tell you about new matches)</span></label>
-    <input name="email" type="email" value="{{ form.email }}" placeholder="you@example.com">
+    <label>Email <span>(required — we send a confirmation link, and matching starts when you click it)</span></label>
+    <input name="email" type="email" value="{{ form.email }}" placeholder="you@example.com" required>
 
     <details {% if form.experience or form.skills or form.hard_nos or form.salary_min %}open{% endif %}>
       <summary>Add more detail — sharper matches (all optional)</summary>
