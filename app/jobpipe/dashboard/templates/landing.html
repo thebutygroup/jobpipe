@@ -21,8 +21,8 @@ b.disabled=true;b.textContent='Creating your page…';return true;}
     <label class="meta" for="qs-pos">One sentence on what you're looking for</label>
     <textarea id="qs-pos" name="positioning" rows="2" required
       placeholder="e.g. Hands-on data platform work at a company that ships, hybrid in London">{{ form.positioning }}</textarea>
-    <label class="meta" for="qs-email">Email — optional, only to tell you about new matches</label>
-    <input id="qs-email" name="email" type="email" placeholder="you@example.com" value="{{ form.email }}">
+    <label class="meta" for="qs-email">Email — we send a confirmation link, and matching starts when you click it</label>
+    <input id="qs-email" name="email" type="email" placeholder="you@example.com" value="{{ form.email }}" required>
     <p style="text-align:center;margin-top:6px">
       <button type="submit">Quick match</button>
     </p>
