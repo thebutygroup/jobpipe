@@ -558,11 +558,51 @@ def profile_edit(request, user_ref: str, token: str):
                  "chips": n in CHIP_FIELDS,
                  "suggest": CHIP_SUGGEST.get(n, "")}
                 for n, lb, k, ph in FORM_FIELDS]
+        from ..resume import ERRORS as RESUME_ERRORS
+        from ..resume import get_resume
+        resume_row = get_resume(conn, row["id"])
     finally:
         conn.close()
     return render(request, "profile_edit.html",
                   {"user_ref": user_ref, "form": form, "saved": saved,
-                   "error": error, "hide_internal_nav": True})
+                   "error": error, "resume": resume_row,
+                   # codes map to fixed copy — nothing from the URL is
+                   # painted into the page (same rule as the flash banner)
+                   "resume_error": RESUME_ERRORS.get(
+                       request.GET.get("resume_error", ""), ""),
+                   "resume_saved": request.GET.get("resume_saved") == "1",
+                   "hide_internal_nav": True})
+
+
+@require_POST
+def resume_upload(request, user_ref: str, token: str):
+    """Upload/replace the resume from the private profile page. Same token
+    gate as profile_edit; the PDF is reduced to text and discarded (see
+    jobpipe/resume.py). Swaps to session auth when accounts land."""
+    from ..resume import ResumeError, save_resume
+
+    conn = connect()
+    try:
+        row = conn.execute(
+            "SELECT id, user_ref FROM applicants WHERE user_ref = ?"
+            " AND edit_token = ? AND edit_token IS NOT NULL AND edit_token != ''",
+            (user_ref, token)).fetchone()
+        if not row:
+            return HttpResponse("not found", status=404)
+        f = request.FILES.get("resume")
+        page = f"/profile/{user_ref}/{token}"
+        if f is None:
+            return redirect(f"{page}?resume_error=nofile")
+        if f.size > 5 * 1024 * 1024 + 1024:   # cheap pre-check; real cap inside
+            return redirect(f"{page}?resume_error=toobig")
+        try:
+            save_resume(conn, row["id"], user_ref, f.name or "resume.pdf",
+                        f.read())
+        except ResumeError as e:
+            return redirect(f"{page}?resume_error={e.code}")
+        return redirect(f"{page}?resume_saved=1")
+    finally:
+        conn.close()
 
 
 @require_GET

@@ -12,6 +12,7 @@ dependencies = [
     "rapidfuzz>=3.6",
     "anthropic>=0.40",
     "APScheduler>=3.10",
+    "pypdf>=4.0",
     "gunicorn>=22.0",
     "Django>=5.0",
 ]

@@ -24,6 +24,8 @@ urlpatterns = [
     path("app/<int:app_id>/reject", views.app_reject, name="app_reject"),
     path("app/<int:app_id>/resume", views.app_resume, name="app_resume"),
     path("app/<int:app_id>/applied", views.app_applied, name="app_applied"),
+    path("profile/<str:user_ref>/<str:token>/resume", views.resume_upload,
+         name="resume_upload"),
     path("profile/<str:user_ref>/<str:token>", views.profile_edit,
          name="profile_edit"),
     path("api/title_suggest", views.title_suggest, name="title_suggest"),

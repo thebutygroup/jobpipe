@@ -154,6 +154,23 @@ CREATE TABLE IF NOT EXISTS source_postings (
     last_seen_at TEXT NOT NULL,
     raw_json TEXT
 );
+-- Resumes: PLAIN TEXT ONLY — the uploaded PDF is discarded after
+-- extraction; sha/size of the upload are kept for change detection and
+-- the display card. One row per (applicant, label); today code always
+-- uses label='default' — multi-resume later is new labels, no migration.
+CREATE TABLE IF NOT EXISTS resumes (
+    id INTEGER PRIMARY KEY,
+    applicant_id INTEGER NOT NULL REFERENCES applicants(id),
+    label TEXT NOT NULL DEFAULT 'default',
+    filename TEXT NOT NULL,
+    upload_sha256 TEXT NOT NULL,
+    upload_size_bytes INTEGER NOT NULL,
+    resume_text TEXT NOT NULL,
+    text_flagged INTEGER NOT NULL DEFAULT 0,
+    uploaded_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (applicant_id, label)
+);
 -- Real token accounting: one row per model call, populated from the
 -- API-reported usage — success AND failure, sync AND batch. Never estimates.
 CREATE TABLE IF NOT EXISTS llm_usage (
