@@ -154,6 +154,21 @@ CREATE TABLE IF NOT EXISTS source_postings (
     last_seen_at TEXT NOT NULL,
     raw_json TEXT
 );
+-- Real token accounting: one row per model call, populated from the
+-- API-reported usage — success AND failure, sync AND batch. Never estimates.
+CREATE TABLE IF NOT EXISTS llm_usage (
+    id INTEGER PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    applicant_id INTEGER,
+    posting_id INTEGER,
+    model TEXT NOT NULL,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+    batch_id TEXT,                 -- NULL = synchronous call
+    ok INTEGER NOT NULL DEFAULT 1  -- 0 = call failed or output unusable
+);
+CREATE INDEX IF NOT EXISTS idx_llm_usage_created ON llm_usage(created_at);
 CREATE INDEX IF NOT EXISTS idx_postings_hash ON postings(content_hash);
 CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at);
 CREATE INDEX IF NOT EXISTS idx_sp_posting ON source_postings(posting_id);
@@ -407,6 +422,24 @@ def upsert_posting(conn, dto: PostingDTO, company_id: int | None = None) -> tupl
     log_event(conn, event_type="posting_discovered", posting_id=pid,
               payload={"source": dto.source_detail or dto.source, "title": dto.title})
     return pid, True
+
+
+def record_llm_usage(conn, model: str, usage: dict | None = None,
+                     applicant_id: int | None = None,
+                     posting_id: int | None = None,
+                     ok: bool = True, batch_id: str | None = None) -> None:
+    """One row per model call, from API-REPORTED numbers only. usage keys:
+    input / output / cache_read (missing keys are 0). usage=None means the
+    call died before the API reported anything — zeros are then the truth,
+    not an estimate."""
+    u = usage or {}
+    conn.execute(
+        "INSERT INTO llm_usage (created_at, applicant_id, posting_id, model,"
+        " input_tokens, output_tokens, cache_read_tokens, batch_id, ok)"
+        " VALUES (?,?,?,?,?,?,?,?,?)",
+        (now(), applicant_id, posting_id, model,
+         int(u.get("input") or 0), int(u.get("output") or 0),
+         int(u.get("cache_read") or 0), batch_id, 1 if ok else 0))
 
 
 def log_event(conn, event_type: str, application_id: int | None = None,

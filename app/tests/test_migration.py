@@ -64,3 +64,22 @@ def test_check_constraint_migration(tmp_path):
     conn2 = dbmod.connect(path)
     assert conn2.execute("SELECT COUNT(*) c FROM postings").fetchone()["c"] == 2
     conn2.close()
+
+
+def test_llm_usage_table_added_to_preexisting_db(tmp_path):
+    """Opening an existing DB (created before llm_usage existed) grows the
+    table idempotently — twice in a row is fine."""
+    path = str(tmp_path / "old.db")
+    raw = sqlite3.connect(path)
+    raw.executescript(OLD_SCHEMA)
+    raw.close()
+    for _ in (1, 2):
+        c = dbmod.connect(path)
+        cols = {r[1] for r in c.execute("PRAGMA table_info(llm_usage)")}
+        assert {"created_at", "applicant_id", "posting_id", "model",
+                "input_tokens", "output_tokens", "cache_read_tokens",
+                "batch_id", "ok"} <= cols
+        dbmod.record_llm_usage(c, "test-model", {"input": 1, "output": 2},
+                               ok=False)
+        c.commit()
+        c.close()

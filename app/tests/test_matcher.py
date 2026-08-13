@@ -191,3 +191,47 @@ def test_failed_calls_count_toward_per_user_cap(conn, profile, monkeypatch):
         "SELECT COUNT(*) AS n FROM events WHERE event_type='match:FAILED'"
         " AND json_extract(payload_json,'$.applicant_id') = ?", (aid,)).fetchone()["n"]
     assert tagged == 2
+
+
+# ---- llm_usage: real token accounting, one row per call ----------------------
+
+def test_usage_row_per_evaluation(conn, profile):
+    for t in GOLDEN:
+        seed(conn, t)
+    aid = matcher.ensure_applicant(conn, profile)
+    matcher.run(conn, profile, aid, client=FakeClient(GOLDEN))
+    rows = conn.execute("SELECT * FROM llm_usage ORDER BY id").fetchall()
+    assert len(rows) == len(GOLDEN)
+    for r in rows:
+        assert r["ok"] == 1 and r["applicant_id"] == aid
+        assert r["input_tokens"] == 100 and r["output_tokens"] == 50
+        assert r["cache_read_tokens"] == 0 and r["batch_id"] is None
+        assert r["posting_id"] is not None
+
+
+def test_usage_recorded_for_failures_too(conn, profile, monkeypatch):
+    """A dead call has no API-reported usage — zeros + ok=0 is the truth.
+    Cap set to len(GOLDEN) so every posting gets exactly one attempt."""
+    from jobpipe.config import settings
+
+    monkeypatch.setattr(settings, "match_daily_call_cap", len(GOLDEN))
+    for t in GOLDEN:
+        seed(conn, t)
+    aid = matcher.ensure_applicant(conn, profile)
+    matcher.run(conn, profile, aid, client=DeadClient())
+    rows = conn.execute("SELECT * FROM llm_usage").fetchall()
+    assert len(rows) == len(GOLDEN)
+    assert all(r["ok"] == 0 and r["input_tokens"] == 0 for r in rows)
+
+
+def test_malformed_response_bills_both_attempts(conn, profile):
+    """First attempt returns unparseable text: the API still billed it, so
+    its REAL tokens land with ok=0; the retry lands ok=1."""
+    seed(conn, "Senior Data Engineer")
+    client = FakeClient({"Senior Data Engineer": 8},
+                        malformed_first_for={"Senior Data Engineer"})
+    aid = matcher.ensure_applicant(conn, profile)
+    matcher.run(conn, profile, aid, client=client)
+    rows = conn.execute("SELECT ok, input_tokens FROM llm_usage"
+                        " ORDER BY id").fetchall()
+    assert [(r["ok"], r["input_tokens"]) for r in rows] == [(0, 100), (1, 100)]

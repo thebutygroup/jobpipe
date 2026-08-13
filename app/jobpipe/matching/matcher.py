@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from .. import health
 from ..config import settings
-from ..db import connect, heartbeat, log_event, now, tx
+from ..db import connect, heartbeat, log_event, now, record_llm_usage, tx
 from ..models import MATCHED, REJECTED_AUTO
 from ..notify import send_failure
 from ..profile import Profile, load_applicant_profile, load_profile
@@ -97,8 +97,12 @@ def parse_response(text: str) -> MatchResult:
     return MatchResult.model_validate(json.loads(cleaned))
 
 
-def call_model(client, profile: Profile, posting, raw_yaml: str = "",
-               model: str | None = None) -> tuple[MatchResult, int]:
+def request_model(client, profile: Profile, posting, raw_yaml: str = "",
+                  model: str | None = None) -> tuple[str, dict]:
+    """One API call: (raw_text, usage). Parsing is the CALLER's problem —
+    a malformed response must still report its real token bill, which is why
+    this is split from call_model (llm_usage records every call, not every
+    usable evaluation)."""
     prompt = PROMPT.format(
         profile_summary=profile_summary(profile, raw_yaml),
         target_titles=", ".join(profile.preferences.target_titles),
@@ -113,8 +117,16 @@ def call_model(client, profile: Profile, posting, raw_yaml: str = "",
         messages=[{"role": "user", "content": prompt}],
     )
     text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
-    tokens = resp.usage.input_tokens + resp.usage.output_tokens
-    return parse_response(text), tokens
+    usage = {"input": resp.usage.input_tokens,
+             "output": resp.usage.output_tokens,
+             "cache_read": getattr(resp.usage, "cache_read_input_tokens", 0) or 0}
+    return text, usage
+
+
+def call_model(client, profile: Profile, posting, raw_yaml: str = "",
+               model: str | None = None) -> tuple[MatchResult, int]:
+    text, usage = request_model(client, profile, posting, raw_yaml, model)
+    return parse_response(text), usage["input"] + usage["output"]
 
 
 def calls_today(conn) -> int:
@@ -310,13 +322,27 @@ def run(conn, profile: Profile, applicant_id: int, client=None, raw_yaml: str = 
         stats["considered"] += 1
         result, tokens = None, 0
         for attempt in (1, 2):
+            usage = None
             try:
-                result, tokens = call_model(client, profile, posting, raw_yaml)
+                text, usage = request_model(client, profile, posting, raw_yaml)
+                result = parse_response(text)
+                tokens = usage["input"] + usage["output"]
+                with tx(conn):
+                    record_llm_usage(conn, settings.match_model, usage,
+                                     applicant_id, posting["id"], ok=True)
                 break
             except (json.JSONDecodeError, ValidationError):
+                # the API DID answer (and billed us) — usage is real, ok=0
+                with tx(conn):
+                    record_llm_usage(conn, settings.match_model, usage,
+                                     applicant_id, posting["id"], ok=False)
                 log.warning("malformed matcher output for posting %d (attempt %d)",
                             posting["id"], attempt)
             except Exception:
+                # died before/without a response: zeros are the reported truth
+                with tx(conn):
+                    record_llm_usage(conn, settings.match_model, usage,
+                                     applicant_id, posting["id"], ok=False)
                 log.exception("matcher call failed for posting %d", posting["id"])
                 break
         if result is None:
