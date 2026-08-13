@@ -450,8 +450,9 @@ def healthz(request):
 def title_suggest(request):
     """Type-ahead for the title tag inputs: REAL posting titles, most common
     first, so users pick names jobs are actually listed under (which is what
-    the prefilter matches against). Public-safe: it returns nothing but the
-    titles of open, public postings."""
+    the prefilter matches against). Top 5 keeps the dropdown a reasonable
+    size (Joe, 13 Aug). Public-safe: it returns nothing but the titles of
+    open, public postings."""
     q = (request.GET.get("q") or "").strip()
     if not (2 <= len(q) <= 80):
         return JsonResponse([], safe=False)
@@ -461,7 +462,7 @@ def title_suggest(request):
             "SELECT title, COUNT(*) AS n FROM postings"
             " WHERE closed_at IS NULL AND duplicate_of IS NULL"
             "   AND title LIKE ?"
-            " GROUP BY lower(title) ORDER BY n DESC, title LIMIT 8",
+            " GROUP BY lower(title) ORDER BY n DESC, title LIMIT 5",
             (f"%{q}%",)).fetchall()
         return JsonResponse([r["title"] for r in rows], safe=False)
     finally:

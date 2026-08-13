@@ -533,3 +533,14 @@ def test_onboard_and_profile_edit_render_tagchips(conn, monkeypatch):
     body = r.content.decode()
     salary_line = [ln for ln in body.splitlines() if 'name="salary_min"' in ln]
     assert salary_line and "data-tagchips" not in salary_line[0]
+
+
+def test_title_suggest_caps_at_five(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    for i in range(9):
+        upsert_posting(conn, PostingDTO(
+            company_name=f"N{i}", source="ats", external_id=f"n{i}",
+            title=f"Data Engineer Level {i}", location="London",
+            apply_url=f"https://x/n{i}"))
+    conn.commit()
+    assert len(Client().get("/api/title_suggest", {"q": "data eng"}).json()) == 5
