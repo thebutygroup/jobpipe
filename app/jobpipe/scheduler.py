@@ -101,8 +101,59 @@ def job_digest() -> None:
     _guarded("digest", digest.main)
 
 
+_CATCHUP_ORDER = ("poll", "match", "prepare", "publish", "track")
+
+
+def catch_up_stale_jobs() -> None:
+    """Run, once, any pipeline job that missed its slot — in pipeline order.
+
+    Why: a job that fires while another holds the pipeline lock waits in a
+    thread; if the container restarts during that wait (crash, rebuild, a
+    16-hour poll getting killed), the waiting jobs simply vanish and nothing
+    reruns them until tomorrow. That is how 12 Aug 2026 became a day with no
+    match/prepare/publish at all. On startup we consult the same staleness
+    verdicts /health shows and run what was missed.
+
+    Only 'stale' jobs are caught up: a job whose last run FAILED would retry
+    (and re-email) on every restart, and 'never ran' on a fresh install would
+    fire the whole pipeline before .env is even proven right. Weekly jobs
+    (indexscan, digest — the latter emails users) are never auto-run; they get
+    a log line telling the operator to run them manually if wanted."""
+    from . import health
+
+    jobs = {"poll": job_poll, "match": job_match, "prepare": job_prepare,
+            "publish": job_publish, "track": job_track}
+    try:
+        conn = connect()
+        board = {e["job"]: e for e in health.job_board(conn)}
+        conn.close()
+    except Exception:
+        log.exception("catch-up: could not read the health board — skipping")
+        return
+    for j in ("indexscan", "digest"):
+        e = board.get(j) or {}
+        if e.get("status") == health.DOWN:
+            log.warning("catch-up: weekly job %s is down (%s) — not auto-run, "
+                        "start it manually if wanted", j, e.get("note", ""))
+    stale = [j for j in _CATCHUP_ORDER
+             if (board.get(j) or {}).get("status") == health.DOWN
+             and "stale" in (board[j].get("note") or "")]
+    if not stale:
+        log.info("catch-up: nothing missed")
+        return
+    log.info("catch-up: running missed jobs in order: %s", ", ".join(stale))
+    for j in stale:
+        jobs[j]()  # _guarded inside handles heartbeat, lock and failure email
+
+
 def start_scheduler() -> BackgroundScheduler:
-    sched = BackgroundScheduler(timezone=settings.tz)
+    # coalesce: several missed firings collapse into one. misfire_grace_time:
+    # a firing delayed up to an hour (slow wakeup, restart) still runs instead
+    # of being silently discarded (APScheduler's default grace is 1 second).
+    sched = BackgroundScheduler(
+        timezone=settings.tz,
+        job_defaults={"coalesce": True, "misfire_grace_time": 3600,
+                      "max_instances": 1})
     sched.add_job(job_poll, "cron", hour="6,18", minute=0, id="poll")
     sched.add_job(job_match, "cron", hour=6, minute=45, id="match")
     sched.add_job(job_prepare, "cron", hour=7, minute=15, id="prepare")
@@ -124,6 +175,8 @@ def main() -> None:
     connect().close()  # create schema up-front
     start_scheduler()
     log.info("jobpipe scheduler started (tz=%s)", settings.tz)
+    threading.Thread(target=catch_up_stale_jobs, name="catch-up",
+                     daemon=True).start()
     # Block forever; respond to SIGTERM cleanly so `docker compose down` is quick.
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())

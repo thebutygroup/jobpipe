@@ -118,20 +118,34 @@ def call_model(client, profile: Profile, posting, raw_yaml: str = "",
 
 
 def calls_today(conn) -> int:
-    """Successful model calls today across ALL applicants (global spend ceiling)."""
-    row = conn.execute(
-        "SELECT COUNT(*) AS n FROM matches WHERE created_at >= date('now')").fetchone()
-    return row["n"]
+    """Model calls today across ALL applicants (global spend ceiling) —
+    successes (matches rows) PLUS failures (match:FAILED events). A failed
+    call costs API spend exactly like a successful one; counting only
+    successes let the 4 Aug 2026 all-fail day burn 1,091 calls straight
+    through a 400 cap, because zero of them ever landed in `matches`."""
+    ok = conn.execute(
+        "SELECT COUNT(*) AS n FROM matches WHERE created_at >= date('now')").fetchone()["n"]
+    failed = conn.execute(
+        "SELECT COUNT(*) AS n FROM events WHERE event_type = 'match:FAILED'"
+        " AND created_at >= date('now')").fetchone()["n"]
+    return ok + failed
 
 
 def calls_today_for(conn, applicant_id: int) -> int:
-    """Successful model calls today for ONE applicant (fairness cap). Without
-    this, whoever matches first eats the whole global cap and everyone after
-    them gets zero — exactly what happened the day users 2-4 signed up."""
-    row = conn.execute(
+    """Model calls today for ONE applicant (fairness cap), failures included.
+    Without this, whoever matches first eats the whole global cap and everyone
+    after them gets zero — exactly what happened the day users 2-4 signed up.
+    Pre-fix match:FAILED events carry no applicant_id in their payload; those
+    count toward the global cap above but not any one applicant's share."""
+    ok = conn.execute(
         "SELECT COUNT(*) AS n FROM matches WHERE created_at >= date('now')"
-        " AND applicant_id = ?", (applicant_id,)).fetchone()
-    return row["n"]
+        " AND applicant_id = ?", (applicant_id,)).fetchone()["n"]
+    failed = conn.execute(
+        "SELECT COUNT(*) AS n FROM events WHERE event_type = 'match:FAILED'"
+        " AND created_at >= date('now')"
+        " AND json_extract(payload_json, '$.applicant_id') = ?",
+        (applicant_id,)).fetchone()["n"]
+    return ok + failed
 
 
 def pending_postings(conn, applicant_id: int) -> list:
@@ -308,7 +322,13 @@ def run(conn, profile: Profile, applicant_id: int, client=None, raw_yaml: str = 
         if result is None:
             stats["failed"] += 1
             with tx(conn):
-                log_event(conn, "match:FAILED", posting_id=posting["id"])
+                log_event(conn, "match:FAILED", posting_id=posting["id"],
+                          payload={"applicant_id": applicant_id})
+            # A failed call is still a spent call — count it against both
+            # caps so an all-fail day (bad key, dead network) stops at the
+            # cap instead of retrying the entire pond.
+            global_count += 1
+            user_count += 1
             continue
         stats["tokens"] += tokens
         state = MATCHED if result.score >= settings.match_threshold else REJECTED_AUTO
