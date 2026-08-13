@@ -446,27 +446,59 @@ def healthz(request):
     return HttpResponse("ok", content_type="text/plain")
 
 
-@require_GET
-def title_suggest(request):
-    """Type-ahead for the title tag inputs: REAL posting titles, most common
-    first, so users pick names jobs are actually listed under (which is what
-    the prefilter matches against). Top 5 keeps the dropdown a reasonable
-    size (Joe, 13 Aug). Public-safe: it returns nothing but the titles of
-    open, public postings."""
-    q = (request.GET.get("q") or "").strip()
-    if not (2 <= len(q) <= 80):
-        return JsonResponse([], safe=False)
+# The common-titles pool: one query every 15 minutes instead of one query
+# per keystroke. Keyed by db_path so tests (and any future multi-DB setup)
+# never see each other's cache.
+_TITLE_POOL = {"key": "", "at": 0.0, "data": []}
+_TITLE_POOL_TTL = 900        # seconds; postings change twice a day anyway
+_TITLE_POOL_SIZE = 1000      # ~8KB gzipped — small enough to ship whole
+
+
+def _title_pool() -> list[str]:
+    import time as _time
+    from ..config import settings as _settings
+    key = _settings.db_path
+    if (_TITLE_POOL["key"] == key
+            and _time.time() - _TITLE_POOL["at"] < _TITLE_POOL_TTL
+            and _TITLE_POOL["data"]):
+        return _TITLE_POOL["data"]
     conn = connect()
     try:
         rows = conn.execute(
             "SELECT title, COUNT(*) AS n FROM postings"
             " WHERE closed_at IS NULL AND duplicate_of IS NULL"
-            "   AND title LIKE ?"
-            " GROUP BY lower(title) ORDER BY n DESC, title LIMIT 5",
-            (f"%{q}%",)).fetchall()
-        return JsonResponse([r["title"] for r in rows], safe=False)
+            " GROUP BY lower(title) ORDER BY n DESC, title LIMIT ?",
+            (_TITLE_POOL_SIZE,)).fetchall()
     finally:
         conn.close()
+    _TITLE_POOL.update(key=key, at=_time.time(),
+                       data=[r["title"] for r in rows])
+    return _TITLE_POOL["data"]
+
+
+@require_GET
+def title_suggest(request):
+    """Type-ahead for the title tag inputs: REAL posting titles, most common
+    first, so users pick names jobs are actually listed under (which is what
+    the prefilter matches against). Public-safe: nothing but titles of open,
+    public postings.
+
+    Without ?q= this returns the whole cached pool — the widget downloads it
+    ONCE per page and filters locally, so typing costs zero network (the
+    per-keystroke round-trip through the tunnel was the lag Joe felt).
+    With ?q= it filters server-side (top 5, prefix matches first) for any
+    caller still using the old contract."""
+    pool = _title_pool()
+    q = (request.GET.get("q") or "").strip().lower()
+    if not q:
+        resp = JsonResponse(pool, safe=False)
+        resp["Cache-Control"] = f"public, max-age={_TITLE_POOL_TTL}"
+        return resp
+    if len(q) > 80:
+        return JsonResponse([], safe=False)
+    prefix = [t for t in pool if t.lower().startswith(q)]
+    inside = [t for t in pool if q in t.lower() and not t.lower().startswith(q)]
+    return JsonResponse((prefix + inside)[:5], safe=False)
 
 
 # List-valued profile fields that render as tag-chips (the widget keeps the

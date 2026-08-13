@@ -509,13 +509,17 @@ def test_title_suggest_returns_real_open_titles(conn, monkeypatch):
     client = Client()
     r = client.get("/api/title_suggest", {"q": "data eng"})
     titles = r.json()
-    # case-dupes collapse to one entry; the most common variant leads
-    assert titles[0].lower() == "senior data engineer"
-    assert "Data Engineer" in titles
+    # prefix matches outrank substring matches (standard type-ahead UX)
+    assert titles[0].lower() == "data engineer"
+    assert any(t.lower() == "senior data engineer" for t in titles)
     assert all("Scientist" not in t for t in titles)  # closed postings excluded
     assert all("Baker" != t for t in titles)
-    # too-short queries return nothing (no full-table dumps)
-    assert client.get("/api/title_suggest", {"q": "d"}).json() == []
+    # no q → the whole cached pool, with cache headers, for local filtering
+    r2 = client.get("/api/title_suggest")
+    pool = r2.json()
+    assert any(t.lower() == "senior data engineer" for t in pool)
+    assert "Baker" in pool  # the pool is everything open, unfiltered
+    assert "max-age" in r2.headers["Cache-Control"]
 
 
 def test_onboard_and_profile_edit_render_tagchips(conn, monkeypatch):

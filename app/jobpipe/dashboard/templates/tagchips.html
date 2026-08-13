@@ -88,7 +88,28 @@ chip's remove button is labelled "Remove <tag>".
       v.split(",").forEach(push); sync(); close();
     }
 
-    var url = input.dataset.suggest || "", timer = null, items = [], active = -1;
+    // Suggestions: the pool of common titles is fetched ONCE (on first
+    // focus) and filtered locally per keystroke — zero network while typing.
+    var url = input.dataset.suggest || "", items = [], active = -1;
+    var pool = null, poolLoading = false;
+    function ensurePool(then) {
+      if (pool) { then(); return; }
+      if (poolLoading) return;
+      poolLoading = true;
+      fetch(url).then(function (r) { return r.json(); })
+        .then(function (arr) { pool = arr; then(); })
+        .catch(function () { pool = []; });
+    }
+    function localFilter(q) {
+      var lq = q.toLowerCase(), prefix = [], inside = [];
+      for (var i = 0; i < pool.length; i++) {
+        var low = String(pool[i]).toLowerCase();
+        if (low.indexOf(lq) === 0) prefix.push(pool[i]);
+        else if (low.indexOf(lq) > 0) inside.push(pool[i]);
+        if (prefix.length >= 5) break;
+      }
+      open(prefix.concat(inside).slice(0, 5));
+    }
     function close() {
       list.hidden = true; active = -1;
       entry.setAttribute("aria-expanded", "false");
@@ -124,16 +145,17 @@ chip's remove button is labelled "Remove <tag>".
         }
       });
     }
+    entry.addEventListener("focus", function () {
+      if (url) ensurePool(function () {});   // warm the pool before typing
+    });
     entry.addEventListener("input", function () {
       var q = entry.value.trim();
-      if (!url || q.length < 2) { close(); return; }
-      clearTimeout(timer);
-      timer = setTimeout(function () {
-        fetch(url + "?q=" + encodeURIComponent(q))
-          .then(function (r) { return r.json(); })
-          .then(function (arr) { if (entry.value.trim() === q) open(arr); })
-          .catch(close);
-      }, 150);
+      if (!url || q.length < 1) { close(); return; }
+      ensurePool(function () {
+        var now = entry.value.trim();
+        if (now.length >= 1) localFilter(now);
+      });
+      if (pool) localFilter(q);
     });
     entry.addEventListener("keydown", function (e) {
       if (e.key === "ArrowDown") { e.preventDefault(); highlight(1); }
