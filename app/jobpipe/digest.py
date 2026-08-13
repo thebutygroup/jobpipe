@@ -192,16 +192,24 @@ def send_one(conn, row: dict, dry_run: bool = False) -> str:
     # same visual language as the site) + the Full-match upgrade door.
     from . import notify
     from .profile_edit import is_quick_only, titles_from_row
+    from .resume import get_resume
+    no_resume = get_resume(conn, row["id"]) is None
     if is_quick_only(row):
         titles = titles_from_row(row)
         html += (f"<p style='margin-top:14px'>This week came from a <b>Quick "
                  f"match</b> on:</p><p>{notify.chips_html(titles)}</p>"
                  f"<p>Add skills, locations and deal-breakers for the "
-                 f"<b>Full match</b>: <a href='{edit_url}'>complete your "
+                 f"<b>Full match</b> — and upload your resume for a "
+                 f"candidate-fit view: <a href='{edit_url}'>complete your "
                  f"profile</a>.</p>")
         text += (f"\nThis week came from a Quick match on: "
                  f"{', '.join(titles)}.\nUpgrade to the Full match: "
                  f"{edit_url}\n")
+    elif no_resume:
+        html += (f"<p style='margin-top:14px'>P.S. Add your resume and every "
+                 f"match also shows your <b>candidate fit</b>: "
+                 f"<a href='{edit_url}'>your profile page</a>.</p>")
+        text += f"\nP.S. Add your resume for candidate fit: {edit_url}\n"
     if dry_run:
         return (f"{user_ref}: WOULD send {len(matches)} new match(es) to {email} "
                 f"(since {since}) — subject: {subject!r}")

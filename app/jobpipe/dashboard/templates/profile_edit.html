@@ -7,6 +7,31 @@ about you. The richer it is, the sharper your matches — <b>titles</b> decide
 which jobs you're compared against at all, and the rest decides the score.
 Saves take effect from the next matching run.</p>
 
+<div class="card" style="margin-top:16px">
+  <h2>Your resume</h2>
+  {% if resume_saved %}<p><strong class="good">✓ Resume saved.</strong>
+    <span class="meta">Your next matching run uses it for your
+    candidate-fit score.</span></p>{% endif %}
+  {% if resume_error %}<div class="error">{{ resume_error }}</div>{% endif %}
+  {% if resume %}
+  <p class="meta">On file: <b>{{ resume.filename }}</b>
+    ({{ resume.upload_size_bytes|filesizeformat }}, updated
+    {{ resume.updated_at|slice:":10" }}). We keep only the text — the PDF
+    itself is discarded after reading.</p>
+  {% else %}
+  <p class="meta">No resume on file yet. Add one and every match also gets a
+  <b>candidate-fit</b> view: what you bring to the role, grounded in your
+  resume. PDF only, 5&nbsp;MB max — we keep only the text, the PDF itself
+  is discarded after reading.</p>
+  {% endif %}
+  <form method="post" action="/profile/{{ user_ref }}/{{ request.resolver_match.kwargs.token }}/resume"
+        enctype="multipart/form-data">{% csrf_token %}
+    <input type="file" name="resume" accept="application/pdf" required>
+    <p style="margin-top:10px"><button type="submit">
+      {% if resume %}Replace resume{% else %}Upload resume{% endif %}</button></p>
+  </form>
+</div>
+
 {% if saved %}<div class="card" style="border-left:4px solid var(--good)">
   <strong class="good">✓ Saved.</strong> <span class="meta">Your next matching
   run uses the updated profile.</span></div>{% endif %}
@@ -34,29 +59,5 @@ Saves take effect from the next matching run.</p>
   your profile.</p>
 </form>
 
-<div class="card" style="margin-top:16px">
-  <h2>Your resume</h2>
-  {% if resume_saved %}<p><strong class="good">✓ Resume saved.</strong>
-    <span class="meta">Your next matching run uses it for your
-    candidate-fit score.</span></p>{% endif %}
-  {% if resume_error %}<div class="error">{{ resume_error }}</div>{% endif %}
-  {% if resume %}
-  <p class="meta">On file: <b>{{ resume.filename }}</b>
-    ({{ resume.upload_size_bytes|filesizeformat }}, updated
-    {{ resume.updated_at|slice:":10" }}). We keep only the text — the PDF
-    itself is discarded after reading.</p>
-  {% else %}
-  <p class="meta">No resume on file yet. Add one and every match also gets a
-  <b>candidate-fit</b> view: what you bring to the role, grounded in your
-  resume. PDF only, 5&nbsp;MB max — we keep only the text, the PDF itself
-  is discarded after reading.</p>
-  {% endif %}
-  <form method="post" action="/profile/{{ user_ref }}/{{ request.resolver_match.kwargs.token }}/resume"
-        enctype="multipart/form-data">{% csrf_token %}
-    <input type="file" name="resume" accept="application/pdf" required>
-    <p style="margin-top:10px"><button type="submit">
-      {% if resume %}Replace resume{% else %}Upload resume{% endif %}</button></p>
-  </form>
-</div>
 {% include "tagchips.html" %}
 {% endblock %}

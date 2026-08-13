@@ -256,9 +256,80 @@ def user_matches(request, user_ref: str):
         nm["reasons"] = json.loads(nm.get("reasons_json") or "[]")
         nm["red_flags"] = json.loads(nm.get("red_flags_json") or "[]")
         nm["scored_day"] = (nm.get("scored_at") or "")[:10]
+    # Resume discovery: the page is anonymous (no token), so it can't LINK
+    # to the private profile page — instead it offers to EMAIL the owner
+    # their own link (see profile_link_email below).
+    has_resume = conn2 = None
+    try:
+        conn2 = connect()
+        arow = conn2.execute("SELECT id FROM applicants WHERE user_ref = ?",
+                             (user_ref,)).fetchone()
+        if arow:
+            from ..resume import get_resume
+            has_resume = get_resume(conn2, arow["id"]) is not None
+    finally:
+        if conn2 is not None:
+            conn2.close()
     return render(request, "user_matches.html",
                   {"rows": rows, "near": near, "user_ref": user_ref, "q": q,
-                   "sort": sort, "hide_internal_nav": True})
+                   "sort": sort, "has_resume": bool(has_resume),
+                   "plink_sent": request.GET.get("plink") == "sent",
+                   "hide_internal_nav": True})
+
+
+@require_POST
+def profile_link_email(request, user_ref: str):
+    """'Email me my profile link' — the anonymous matches page's one door to
+    the private profile page (where the resume upload lives). Sends only to
+    the CONFIRMED address already on file; the response never reveals
+    whether the user exists, is confirmed, or was rate-limited (no oracle:
+    always 'if we have an address, it's on its way'). Max one send per day."""
+    conn = connect()
+    try:
+        row = conn.execute("SELECT * FROM applicants WHERE user_ref = ?",
+                           (user_ref,)).fetchone()
+        eligible = bool(row and row["email_confirmed_at"]
+                        and not row["shadow_banned"])
+        if eligible:
+            recent = conn.execute(
+                "SELECT 1 FROM events WHERE event_type = 'profile_link_email'"
+                " AND json_extract(payload_json,'$.user_ref') = ?"
+                " AND created_at >= datetime('now','-1 day') LIMIT 1",
+                (user_ref,)).fetchone()
+            eligible = recent is None
+        email = ""
+        if eligible:
+            try:
+                from ..profile import load_applicant_profile
+                email = (getattr(load_applicant_profile(row).identity,
+                                 "email", "") or "").strip()
+            except Exception:
+                email = ""
+        if eligible and email:
+            from ..config import settings as _settings
+            from ..profile_edit import ensure_edit_token
+            base = (_settings.dashboard_base_url or "").rstrip("/")
+            url = f"{base}/profile/{user_ref}/{ensure_edit_token(conn, row['id'])}"
+            from .. import notify
+            ok = notify.send_email(
+                to=email,
+                subject="Your private profile link — jobpipe",
+                html_body=(
+                    f"<p>Here's your private profile page — edit your matching "
+                    f"profile and add your resume there:</p>"
+                    f"<p><a href='{url}'>{url}</a></p>"
+                    f"<p>Keep this link to yourself: anyone who has it can "
+                    f"edit your profile.</p>"),
+                text_body=(f"Your private profile page:\n{url}\n\nEdit your "
+                           f"matching profile and add your resume there. "
+                           f"Keep this link private."))
+            from ..db import log_event
+            with tx(conn):
+                log_event(conn, "profile_link_email",
+                          payload={"user_ref": user_ref, "ok": ok})
+    finally:
+        conn.close()
+    return redirect(f"/job_matches/{user_ref}?plink=sent")
 
 
 @require_GET

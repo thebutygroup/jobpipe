@@ -17,6 +17,8 @@ urlpatterns = [
          name="confirm_signup"),
     path("outcome/<int:outcome_id>/link", views.outcome_link, name="outcome_link"),
     path("job_matches/<str:user_ref>", views.user_matches, name="user_matches"),
+    path("job_matches/<str:user_ref>/profile_link", views.profile_link_email,
+         name="profile_link_email"),
     path("job_matches/<str:user_ref>/<int:job_id>", views.job_match_detail,
          name="job_match_detail"),
     path("app/<int:app_id>/save", views.app_save, name="app_save"),

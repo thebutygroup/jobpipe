@@ -167,3 +167,49 @@ def test_error_codes_never_reflect_url_text(conn, monkeypatch):
     page = Client().get("/profile/tuser/tok123",
                         {"resume_error": "your account is suspended call 555"})
     assert b"account is suspended" not in page.content
+
+# ---- discovery: the anonymous matches page's door to the profile page --------
+
+def test_matches_page_banner_and_profile_link_email(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    aid = _seed(conn)
+    conn.execute("UPDATE applicants SET email_confirmed_at='2026-08-01T00:00:00',"
+                 " profile_yaml=? WHERE id=?",
+                 ("identity:\n  full_name: T\n  email: t@example.com\n"
+                  "preferences:\n  target_titles: [Data Engineer]\n"
+                  "  locations_ok: [London]\n", aid))
+    conn.commit()
+    sent = []
+    from jobpipe import notify
+    monkeypatch.setattr(notify, "send_email",
+                        lambda **kw: sent.append(kw) or True)
+    c = Client()
+    # banner shows for resume-less users, with the email-me button
+    page = c.get("/job_matches/tuser").content
+    assert b"Add your resume" in page and b"Email me my profile link" in page
+    # button emails the private link to the address on file
+    r = c.post("/job_matches/tuser/profile_link")
+    assert r.status_code == 302 and "plink=sent" in r.headers["Location"]
+    assert len(sent) == 1 and sent[0]["to"] == "t@example.com"
+    assert "/profile/tuser/" in sent[0]["html_body"]
+    # rate-limited: second click inside a day sends nothing, same response
+    r2 = c.post("/job_matches/tuser/profile_link")
+    assert "plink=sent" in r2.headers["Location"] and len(sent) == 1
+    # unknown user: identical response shape, nothing sent (no oracle)
+    r3 = c.post("/job_matches/nobody/profile_link")
+    assert "plink=sent" in r3.headers["Location"] and len(sent) == 1
+    # once a resume exists the banner disappears
+    resmod.save_resume(conn, aid, "tuser", "cv.pdf", make_pdf(CV * 3))
+    page = c.get("/job_matches/tuser").content
+    assert b"Email me my profile link" not in page
+
+
+def test_unconfirmed_user_gets_no_profile_link_email(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    _seed(conn)   # email_confirmed_at stays NULL
+    sent = []
+    from jobpipe import notify
+    monkeypatch.setattr(notify, "send_email",
+                        lambda **kw: sent.append(kw) or True)
+    r = Client().post("/job_matches/tuser/profile_link")
+    assert "plink=sent" in r.headers["Location"] and sent == []

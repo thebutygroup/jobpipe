@@ -101,21 +101,32 @@ def send_matches_ready(conn, applicant_row, limit: int = 5,
     subject, html, text = compose(user_ref, matches, n_total)
     from . import notify
     # Quick-match-only profiles get their titles back as chips + the door to
-    # the Full match. Goes quiet the moment they add anything.
+    # the Full match; anyone still without a resume gets the resume line.
+    # Both go quiet the moment the user acts.
     from .profile_edit import ensure_edit_token, is_quick_only, titles_from_row
+    from .resume import get_resume
+    base = (settings.dashboard_base_url or "").rstrip("/")
+    edit_url = (f"{base}/profile/{user_ref}/"
+                f"{ensure_edit_token(conn, applicant_row['id'])}")
+    no_resume = get_resume(conn, applicant_row["id"]) is None
     if is_quick_only(applicant_row):
-        base = (settings.dashboard_base_url or "").rstrip("/")
-        edit_url = (f"{base}/profile/{user_ref}/"
-                    f"{ensure_edit_token(conn, applicant_row['id'])}")
         titles = titles_from_row(applicant_row)
         html += (f"<p style='margin-top:14px'>These came from a <b>Quick "
                  f"match</b> on:</p><p>{notify.chips_html(titles)}</p>"
                  f"<p>Add skills, locations and deal-breakers for the "
-                 f"<b>Full match</b> — every score gets sharper: "
+                 f"<b>Full match</b> — and upload your resume for a "
+                 f"candidate-fit view of every job: "
                  f"<a href='{edit_url}'>complete your profile</a>.</p>")
         text += (f"\n\nThese came from a Quick match on: {', '.join(titles)}."
                  f"\nUpgrade to the Full match (skills, locations, "
-                 f"deal-breakers): {edit_url}\n")
+                 f"deal-breakers, resume): {edit_url}\n")
+    elif no_resume:
+        html += (f"<p style='margin-top:14px'>P.S. Add your resume and every "
+                 f"match also shows your <b>candidate fit</b> — what you "
+                 f"bring to the role: <a href='{edit_url}'>your profile "
+                 f"page</a>.</p>")
+        text += (f"\n\nP.S. Add your resume for a candidate-fit view on "
+                 f"every match: {edit_url}\n")
     ok = notify.send_email(subject=subject, html_body=html, text_body=text,
                            to=email)
     with tx(conn):
