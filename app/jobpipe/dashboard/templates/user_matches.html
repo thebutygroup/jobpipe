@@ -35,9 +35,10 @@
 <details class="card" style="margin-top:18px">
   <summary style="cursor:pointer;color:var(--accent-deep);font-weight:600">
     Near misses — {{ near|length }} job{{ near|length|pluralize }} that scored 4–6</summary>
-  <p class="meta">Close, but the matcher wasn't convinced. Worth a skim if the
-  list above runs dry — and if several of these look right to you, reply to
-  your profile email: sharpening your profile moves jobs like these up.</p>
+  <p class="meta">Close, but the matcher wasn't convinced. Tap a title to see
+  exactly why it held back. If the reasons look wrong to you — right job,
+  wrong verdict — that's the signal to sharpen your profile (titles,
+  locations, keywords): jobs like these move up.</p>
   <table class="tbl">
     <thead><tr><th>score</th><th>company</th><th>title</th><th>board</th><th></th></tr></thead>
     <tbody>
@@ -45,7 +46,18 @@
       <tr>
         <td data-l="score"><span class="score s{{ n.score }}">{{ n.score }}</span></td>
         <td data-l="company">{{ n.company }}</td>
-        <td data-l="title">{{ n.title }}</td>
+        <td data-l="title">
+          {% if n.reasons or n.red_flags %}
+          <details>
+            <summary style="cursor:pointer">{{ n.title }}</summary>
+            <div class="meta" style="margin-top:6px">
+              {% if n.scored_day %}<div>scored {{ n.scored_day }}</div>{% endif %}
+              {% if n.reasons %}<ul style="margin:4px 0">{% for r in n.reasons %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
+              {% if n.red_flags %}<div>held back by:</div><ul style="margin:4px 0">{% for f in n.red_flags %}<li>{{ f }}</li>{% endfor %}</ul>{% endif %}
+            </div>
+          </details>
+          {% else %}{{ n.title }}{% endif %}
+        </td>
         <td data-l="board"><span class="pill" style="font-size:11px">{{ n.source_label }}</span></td>
         <td data-l="">{% if n.listing_url %}<a href="{{ n.listing_url }}" target="_blank" rel="noopener">↗</a>{% endif %}</td>
       </tr>

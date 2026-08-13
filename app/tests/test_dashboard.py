@@ -475,10 +475,17 @@ def test_near_misses_collapsed_on_match_page(conn, monkeypatch):
             apply_url=f"https://boards.greenhouse.io/x/{score}",
             description_text="d"))
         conn.execute("INSERT INTO matches (posting_id, applicant_id, score,"
-                     " reasons_json, model, tokens_used, created_at)"
-                     " VALUES (?,1,?,'[]','m',1,datetime('now'))", (pid, score))
+                     " reasons_json, red_flags_json, model, tokens_used, created_at)"
+                     " VALUES (?,1,?,'[\"solid title overlap\"]',"
+                     " '[\"salary band below your minimum\"]','m',1,"
+                     " datetime('now'))", (pid, score))
     conn.commit()
     r = Client().get("/job_matches/tuser")
     assert b"Near misses" in r.content
     assert b"Almost Right Role" in r.content
     assert b"Terrible Role" not in r.content
+    # the matcher's verdict is visible, so users can judge whether to tweak
+    # their profile — reasons, what held it back, and when it was scored
+    assert b"solid title overlap" in r.content
+    assert b"salary band below your minimum" in r.content
+    assert b"held back by" in r.content and b"scored 2" in r.content

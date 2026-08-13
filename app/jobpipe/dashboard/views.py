@@ -237,10 +237,14 @@ def user_matches(request, user_ref: str):
     # Near misses: scored 4-6, so no application/card — shown collapsed at the
     # bottom for people who want to look further down the list. Low scores
     # (<=3) stay out of the way entirely.
+    # Bare m.* columns ride along with MAX(m.score): SQLite guarantees they
+    # come from the row that produced the max, i.e. the best-scoring
+    # evaluation of that posting — exactly the verdict worth explaining.
     near = _rows(
         "SELECT c.name AS company, p.title, p.location, p.source,"
         "       COALESCE(p.canonical_apply_url, p.apply_url) AS listing_url,"
-        "       MAX(m.score) AS score"
+        "       MAX(m.score) AS score, m.reasons_json, m.red_flags_json,"
+        "       m.created_at AS scored_at"
         " FROM matches m JOIN postings p ON p.id = m.posting_id"
         " JOIN companies c ON c.id = p.company_id"
         " JOIN applicants ap ON ap.id = m.applicant_id"
@@ -249,6 +253,9 @@ def user_matches(request, user_ref: str):
         " ORDER BY score DESC, MAX(m.created_at) DESC LIMIT 40", (user_ref,))
     for nm in near:
         nm["source_label"] = SOURCE_LABELS.get(nm.get("source"), nm.get("source") or "")
+        nm["reasons"] = json.loads(nm.get("reasons_json") or "[]")
+        nm["red_flags"] = json.loads(nm.get("red_flags_json") or "[]")
+        nm["scored_day"] = (nm.get("scored_at") or "")[:10]
     return render(request, "user_matches.html",
                   {"rows": rows, "near": near, "user_ref": user_ref, "q": q,
                    "sort": sort, "hide_internal_nav": True})
