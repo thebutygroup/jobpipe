@@ -544,3 +544,50 @@ def test_title_suggest_caps_at_five(conn, monkeypatch):
             apply_url=f"https://x/n{i}"))
     conn.commit()
     assert len(Client().get("/api/title_suggest", {"q": "data eng"}).json()) == 5
+
+
+# ---- Quick match vs Full match: chips + upgrade doors everywhere -------------
+
+def test_landing_has_chip_titles_and_quick_full_match_copy(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    r = Client().get("/")
+    body = r.content
+    assert b'data-suggest="/api/title_suggest"' in body
+    assert b"Quick match" in body and b"Full match" in body
+    assert b"Start matching me" not in body   # old button copy retired
+    assert b"tc-wrap" in body                 # widget shipped on this page too
+
+
+def test_confirm_email_carries_title_chips(conn, monkeypatch):
+    from jobpipe import notify
+    from jobpipe.dashboard import views as v
+    sent = []
+    monkeypatch.setattr(notify, "send_email",
+                        lambda **kw: sent.append(kw) or True)
+    monkeypatch.setattr(v, "_notify_joe", lambda **kw: None)
+    v._send_confirm_email("maya", "maya@example.com", "tok",
+                          ["Head of Data", "Data Director"])
+    assert len(sent) == 1
+    html = sent[0]["html_body"]
+    assert "Head of Data" in html and "Data Director" in html
+    assert "border-radius:999px" in html      # rendered as chips, not a list
+    assert "Matching for: Head of Data, Data Director" in sent[0]["text_body"]
+
+
+def test_confirmed_page_shows_chips_and_full_match_door(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    from jobpipe.dashboard import views as v
+    monkeypatch.setattr(v, "_instant_mini_run", lambda ref: None)
+    monkeypatch.setattr(v, "_async", lambda fn, *a: None)
+    c = Client()
+    _signup(c, "maya")
+    r = _confirm(c, conn, "maya")
+    body = r.content
+    assert b"Senior Data Engineer" in body and b'class="pill"' in body
+    assert b"Full match" in body
+    edit_token = conn.execute("SELECT edit_token FROM applicants"
+                              ).fetchone()["edit_token"]
+    assert edit_token and f"/profile/maya/{edit_token}".encode() in body
+    # signup landing page (pre-confirm) shows the chips too
+    r2 = _signup(Client(), "maya2")
+    assert b"Senior Data Engineer" in r2.content and b"Quick match" in r2.content

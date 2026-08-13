@@ -59,6 +59,32 @@ def _split(csv: str) -> list[str]:
     return [p.strip() for p in (csv or "").split(",") if p.strip()]
 
 
+def titles_from_row(row) -> list[str]:
+    """The target titles stored on an applicant row, best-effort ([] on any
+    parse trouble — display-only callers must never crash on bad YAML)."""
+    import yaml
+    try:
+        data = yaml.safe_load(row["profile_yaml"] or "") or {}
+        return list((data.get("preferences") or {}).get("target_titles") or [])
+    except Exception:
+        return []
+
+
+def is_quick_only(row) -> bool:
+    """True while a profile is still the Quick-match minimum (titles + one
+    sentence): no skills, no experience, no title variants. Drives the
+    'upgrade to the Full match' nudges — and stops them the moment the user
+    adds anything."""
+    import yaml
+    try:
+        data = yaml.safe_load(row["profile_yaml"] or "") or {}
+    except Exception:
+        return False
+    prefs = data.get("preferences") or {}
+    return not (data.get("skills") or data.get("experience")
+                or prefs.get("title_synonyms"))
+
+
 def fields_from_row(row) -> dict[str, str]:
     """Prefill form fields from the stored profile YAML (empty-safe)."""
     try:

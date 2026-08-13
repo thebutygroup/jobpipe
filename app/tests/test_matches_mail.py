@@ -90,3 +90,37 @@ def test_unconfirmed_address_gets_no_email(conn, monkeypatch):
     assert "not confirmed" in out and sent == []
     out2 = matches_mail.send_matches_ready(conn, row, force=True)
     assert "sent" in out2 and len(sent) == 1
+
+
+def test_quick_match_profiles_get_the_full_match_upsell(conn, monkeypatch):
+    """No skills/experience/synonyms yet → the email shows their title chips
+    and the Full-match door. Adding anything makes it go quiet."""
+    row = seed_user(conn)   # fixture yaml: titles + locations only
+    sent = []
+    from jobpipe import notify
+    monkeypatch.setattr(notify, "send_email",
+                        lambda **kw: sent.append(kw) or True)
+    out = matches_mail.send_matches_ready(conn, row)
+    assert "sent" in out
+    html = sent[0]["html_body"]
+    assert "Quick match" in html and "Full match" in html
+    assert "Data Engineer" in html and "border-radius:999px" in html
+    token = conn.execute("SELECT edit_token FROM applicants"
+                         ).fetchone()["edit_token"]
+    assert token and f"/profile/tuser/{token}" in html
+    # enrich the profile → no more upsell
+    enriched = row["profile_yaml"] + "\nskills:\n- Python\n"
+    conn.execute("UPDATE applicants SET profile_yaml=? WHERE id=?",
+                 (enriched, row["id"]))
+    conn.commit()
+    row = conn.execute("SELECT * FROM applicants WHERE id=?",
+                       (row["id"],)).fetchone()
+    matches_mail.send_matches_ready(conn, row, force=True)
+    assert "Full match" not in sent[1]["html_body"]
+
+
+def test_quick_only_and_titles_helpers(conn):
+    from jobpipe.profile_edit import is_quick_only, titles_from_row
+    row = seed_user(conn)
+    assert is_quick_only(row) is True
+    assert titles_from_row(row) == ["Data Engineer"]

@@ -7,6 +7,13 @@
   <p class="lede">We've sent a confirmation link to
   <strong>{{ email }}</strong>. Click it and matching starts straight away —
   until then nothing is matched to you.</p>
+  {% if titles %}
+  <p style="margin:10px 0 0">Matching for:
+    {% for t in titles %}<span class="pill">{{ t }}</span> {% endfor %}</p>
+  <p class="meta" style="margin-top:6px">This is a <b>Quick match</b>. After
+  you confirm, upgrade to the <b>Full match</b> — skills, locations,
+  deal-breakers — from the link on your confirmation page.</p>
+  {% endif %}
   <p class="meta">No email after a minute or two? Check spam, or
   <a href="/onboard">sign up again</a> — the link is the only thing standing
   between you and your matches.</p>

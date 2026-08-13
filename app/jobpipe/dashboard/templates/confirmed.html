@@ -11,7 +11,20 @@
   <p class="lede">Your email is confirmed and your profile is queued — matching
   starts after a quick human review, usually within a day.</p>
   {% endif %}
+  {% if titles %}
+  <p style="margin:10px 0 0">Matching for:
+    {% for t in titles %}<span class="pill">{{ t }}</span> {% endfor %}</p>
+  {% endif %}
 </div>
+{% if edit_url and quick_only %}
+<div class="card" style="max-width:560px;margin:0 auto 14px;border-left:4px solid var(--accent,#4a90d9)">
+  <h2>Upgrade to the Full match</h2>
+  <p class="meta">Right now you're on a <b>Quick match</b> — titles and one
+  sentence. Add skills, locations, deal-breakers and salary, and every job is
+  scored against the full picture.</p>
+  <p><a class="btn" href="{{ edit_url }}">Do the Full match →</a></p>
+</div>
+{% endif %}
 <div class="card" style="max-width:560px;margin:0 auto">
   <h2>Your matches live here</h2>
   <p style="margin:8px 0"><a href="/job_matches/{{ user_ref }}"><strong>{{ request.get_host }}/job_matches/{{ user_ref }}</strong></a> <span class="meta">— cards with the full "why it fits"</span></p>

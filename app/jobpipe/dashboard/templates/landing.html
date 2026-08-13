@@ -15,19 +15,26 @@ b.disabled=true;b.textContent='Creating your page…';return true;}
     <label class="meta" for="qs-name">Pick a user name — it becomes your private page address</label>
     <input id="qs-name" name="full_name" required maxlength="30" pattern="[A-Za-z0-9_-]{1,30}"
            placeholder="e.g. maya" value="{{ form.full_name }}">
-    <label class="meta" for="qs-title">The job title you want</label>
+    <label class="meta" for="qs-title">The job titles you want — press Enter after each</label>
     <input id="qs-title" name="target_titles" required placeholder="e.g. Senior Data Engineer"
-           value="{{ form.target_titles }}">
+           value="{{ form.target_titles }}" data-tagchips="1" data-suggest="/api/title_suggest">
     <label class="meta" for="qs-pos">One sentence on what you're looking for</label>
     <textarea id="qs-pos" name="positioning" rows="2" required
       placeholder="e.g. Hands-on data platform work at a company that ships, hybrid in London">{{ form.positioning }}</textarea>
     <label class="meta" for="qs-email">Email — optional, only to tell you about new matches</label>
     <input id="qs-email" name="email" type="email" placeholder="you@example.com" value="{{ form.email }}">
     <p style="text-align:center;margin-top:6px">
-      <button type="submit">Start matching me</button>
+      <button type="submit">Quick match</button>
     </p>
-    <p class="meta" style="text-align:center">That's genuinely all we need.
-    Want sharper matches? <a href="/onboard" style="white-space:nowrap">Add more detail →</a></p>
+    <div style="text-align:center;background:var(--accent-soft,#e8f1fb);
+        border-radius:10px;padding:10px 14px;margin-top:10px">
+      <p style="margin:0;font-weight:600">That's a Quick match — all we need
+      to start.</p>
+      <p class="meta" style="margin:4px 0 0">Want the <b>Full match</b>?
+      Skills, locations, deal-breakers and salary make every score sharper.
+      <a href="/onboard" style="white-space:nowrap;font-weight:600">Do the
+      Full match →</a></p>
+    </div>
   </form>
 
   <div class="pills">
@@ -38,8 +45,9 @@ b.disabled=true;b.textContent='Creating your page…';return true;}
 <div class="steps">
   <div class="card">
     <h2>1 · Say what you want</h2>
-    <p class="meta">A title and a sentence is enough to start. The more you share,
-    the sharper the matches get — add detail any time.</p>
+    <p class="meta">A title and a sentence is enough to start (the Quick
+    match). Upgrade to the <b>Full match</b> any time — the more you share,
+    the sharper every score gets.</p>
   </div>
   <div class="card">
     <h2>2 · We gather &amp; score</h2>
@@ -68,4 +76,5 @@ b.disabled=true;b.textContent='Creating your page…';return true;}
 
 <p class="meta" style="text-align:center">Free, personal, no recruiters.
 Questions — ask whoever sent you here.</p>
+{% include "tagchips.html" %}
 {% endblock %}

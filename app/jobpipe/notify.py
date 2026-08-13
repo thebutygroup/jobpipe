@@ -20,6 +20,18 @@ from .config import settings
 log = logging.getLogger(__name__)
 
 
+def chips_html(items) -> str:
+    """Static, email-safe 'chips': the same visual language as the site's tag
+    inputs, but pure inline-styled spans so every mail client renders them.
+    Use anywhere a list of titles (or similar) appears in an email."""
+    from html import escape
+    return "".join(
+        "<span style=\"display:inline-block;background:#e8f1fb;"
+        "border-radius:999px;padding:3px 10px;margin:2px 6px 2px 0;"
+        "font-size:13px;color:#1f3b57\">" + escape(str(t).strip()) + "</span>"
+        for t in items if str(t).strip())
+
+
 def send_email(subject: str, html_body: str, text_body: str = "", to: str = "") -> bool:
     """Send one email. Retries once on failure; returns success. Never raises —
     a failed notification must not crash a scheduled job or a signup.

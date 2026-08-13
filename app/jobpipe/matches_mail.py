@@ -100,6 +100,22 @@ def send_matches_ready(conn, applicant_row, limit: int = 5,
         (applicant_row["id"], settings.match_threshold)).fetchone()["n"]
     subject, html, text = compose(user_ref, matches, n_total)
     from . import notify
+    # Quick-match-only profiles get their titles back as chips + the door to
+    # the Full match. Goes quiet the moment they add anything.
+    from .profile_edit import ensure_edit_token, is_quick_only, titles_from_row
+    if is_quick_only(applicant_row):
+        base = (settings.dashboard_base_url or "").rstrip("/")
+        edit_url = (f"{base}/profile/{user_ref}/"
+                    f"{ensure_edit_token(conn, applicant_row['id'])}")
+        titles = titles_from_row(applicant_row)
+        html += (f"<p style='margin-top:14px'>These came from a <b>Quick "
+                 f"match</b> on:</p><p>{notify.chips_html(titles)}</p>"
+                 f"<p>Add skills, locations and deal-breakers for the "
+                 f"<b>Full match</b> — every score gets sharper: "
+                 f"<a href='{edit_url}'>complete your profile</a>.</p>")
+        text += (f"\n\nThese came from a Quick match on: {', '.join(titles)}."
+                 f"\nUpgrade to the Full match (skills, locations, "
+                 f"deal-breakers): {edit_url}\n")
     ok = notify.send_email(subject=subject, html_body=html, text_body=text,
                            to=email)
     with tx(conn):

@@ -188,6 +188,20 @@ def send_one(conn, row: dict, dry_run: bool = False) -> str:
 
     near = near_misses(conn, row["id"], since)
     subject, html, text = compose(user_ref, matches, near, edit_url)
+    # Quick-match-only profiles: show the titles we matched on (as chips, the
+    # same visual language as the site) + the Full-match upgrade door.
+    from . import notify
+    from .profile_edit import is_quick_only, titles_from_row
+    if is_quick_only(row):
+        titles = titles_from_row(row)
+        html += (f"<p style='margin-top:14px'>This week came from a <b>Quick "
+                 f"match</b> on:</p><p>{notify.chips_html(titles)}</p>"
+                 f"<p>Add skills, locations and deal-breakers for the "
+                 f"<b>Full match</b>: <a href='{edit_url}'>complete your "
+                 f"profile</a>.</p>")
+        text += (f"\nThis week came from a Quick match on: "
+                 f"{', '.join(titles)}.\nUpgrade to the Full match: "
+                 f"{edit_url}\n")
     if dry_run:
         return (f"{user_ref}: WOULD send {len(matches)} new match(es) to {email} "
                 f"(since {since}) — subject: {subject!r}")

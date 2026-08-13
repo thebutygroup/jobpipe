@@ -832,26 +832,36 @@ def _send_welcome(user_ref: str, email: str, activated: bool) -> None:
     _record_email_event("welcome", user_ref, ok, to=email.strip())
 
 
-def _send_confirm_email(user_ref: str, email: str, token: str) -> None:
+def _send_confirm_email(user_ref: str, email: str, token: str,
+                        titles: list | None = None) -> None:
     """The one email an unconfirmed signup gets. Until it's clicked, the
-    account is inert: no matching, no other mail."""
+    account is inert: no matching, no other mail. Their titles render as the
+    same chips they saw in the form — one visual language everywhere."""
     from ..config import settings as _settings
     base = (_settings.dashboard_base_url or "").rstrip("/")
     link = f"{base}/confirm/{user_ref}/{token}"
     ok = False
     try:
         from .. import notify
+        chips = notify.chips_html(titles or [])
+        chips_block = (f"<p style='margin:10px 0 4px'>We'll be matching for:"
+                       f"</p><p style='margin:0 0 10px'>{chips}</p>"
+                       if chips else "")
+        titles_line = (("Matching for: " + ", ".join(titles) + "\n\n")
+                       if titles else "")
         ok = notify.send_email(
             to=email.strip(),
             subject="Confirm your email to start matching — jobpipe",
             html_body=(
                 f"<p>Almost there, <b>{user_ref}</b> 🌱</p>"
+                f"{chips_block}"
                 f"<p>Confirm this address and jobpipe starts matching jobs to "
                 f"your profile straight away:</p>"
                 f"<p><a href='{link}'>{link}</a></p>"
                 f"<p>Nothing is matched to you until you do — if this wasn't "
                 f"you, ignore this email and nothing further happens.</p>"),
-            text_body=(f"Almost there, {user_ref}!\n\nConfirm your email to "
+            text_body=(f"Almost there, {user_ref}!\n\n{titles_line}"
+                       f"Confirm your email to "
                        f"start matching:\n{link}\n\nNothing is matched to you "
                        f"until you do. If this wasn't you, ignore this email."))
     except Exception:
@@ -870,11 +880,12 @@ def _begin_signup(conn, user_ref: str, email: str) -> None:
     """Issue a confirmation token and mail it. Deliberately does NOT activate:
     activation (and the instant mini run) happens in confirm_signup."""
     from ..confirm import ensure_confirm_token
+    from ..profile_edit import titles_from_row
 
-    row = conn.execute("SELECT id FROM applicants WHERE user_ref = ?",
+    row = conn.execute("SELECT id, profile_yaml FROM applicants WHERE user_ref = ?",
                        (user_ref,)).fetchone()
     token = ensure_confirm_token(conn, row["id"])
-    _async(_send_confirm_email, user_ref, email, token)
+    _async(_send_confirm_email, user_ref, email, token, titles_from_row(row))
 
 
 def _activate_or_flag(conn, user_ref: str) -> tuple[bool, int]:
@@ -990,6 +1001,7 @@ def onboard(request):
         return render(request, "onboard_done.html",
                       {"name": prof.identity.full_name, "user_ref": user_ref,
                        "awaiting_confirm": True, "email": prof.identity.email.strip(),
+                       "titles": list(prof.preferences.target_titles),
                        "hide_internal_nav": True})
 
     titles = [t.strip() for t in (f.get("target_titles") or "").split(",") if t.strip()]
@@ -1061,6 +1073,7 @@ def onboard(request):
     return render(request, "onboard_done.html",
                   {"name": data["identity"]["full_name"], "user_ref": user_ref,
                    "awaiting_confirm": True, "email": data["identity"]["email"],
+                   "titles": list(data["preferences"].get("target_titles") or []),
                    "hide_internal_nav": True})
 
 
@@ -1085,6 +1098,14 @@ def confirm_signup(request, user_ref: str, token: str):
             activated, n_today = True, 0
         else:
             activated, n_today = _activate_or_flag(conn, user_ref)
+        # The moment they're real: show what we're matching for (chips) and
+        # a direct door to the Full match (their private edit page).
+        from ..config import settings as _settings
+        from ..profile_edit import ensure_edit_token, is_quick_only, titles_from_row
+        base = (_settings.dashboard_base_url or "").rstrip("/")
+        titles = titles_from_row(row)
+        edit_url = f"{base}/profile/{user_ref}/{ensure_edit_token(conn, row['id'])}"
+        quick_only = is_quick_only(row)
     finally:
         conn.close()
     if not already_active:
@@ -1098,7 +1119,8 @@ def confirm_signup(request, user_ref: str, token: str):
         _async(_signup_emails, user_ref, email, activated, n_today)
     return render(request, "confirmed.html",
                   {"ok": True, "user_ref": user_ref, "activated": activated,
-                   "hide_internal_nav": True})
+                   "titles": titles, "edit_url": edit_url,
+                   "quick_only": quick_only, "hide_internal_nav": True})
 
 
 @require_GET
