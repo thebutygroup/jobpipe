@@ -26,6 +26,7 @@ urlpatterns = [
     path("app/<int:app_id>/applied", views.app_applied, name="app_applied"),
     path("profile/<str:user_ref>/<str:token>", views.profile_edit,
          name="profile_edit"),
+    path("api/title_suggest", views.title_suggest, name="title_suggest"),
     path("health", views.health, name="health"),
     path("healthz", views.healthz, name="healthz"),
 ]

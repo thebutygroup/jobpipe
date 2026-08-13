@@ -489,3 +489,47 @@ def test_near_misses_collapsed_on_match_page(conn, monkeypatch):
     assert b"solid title overlap" in r.content
     assert b"salary band below your minimum" in r.content
     assert b"held back by" in r.content and b"scored 2" in r.content
+
+
+# ---- tag-chip inputs + title type-ahead --------------------------------------
+
+def test_title_suggest_returns_real_open_titles(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    for i, (title, closed) in enumerate([
+            ("Senior Data Engineer", None), ("senior data engineer", None),
+            ("Data Engineer", None), ("Senior Data Scientist", "2026-08-01"),
+            ("Baker", None)]):
+        pid, _ = upsert_posting(conn, PostingDTO(
+            company_name=f"C{i}", source="ats", external_id=f"s{i}",
+            title=title, location="London", apply_url=f"https://x/s{i}"))
+        if closed:
+            conn.execute("UPDATE postings SET closed_at=? WHERE id=?",
+                         (closed, pid))
+    conn.commit()
+    client = Client()
+    r = client.get("/api/title_suggest", {"q": "data eng"})
+    titles = r.json()
+    # case-dupes collapse to one entry; the most common variant leads
+    assert titles[0].lower() == "senior data engineer"
+    assert "Data Engineer" in titles
+    assert all("Scientist" not in t for t in titles)  # closed postings excluded
+    assert all("Baker" != t for t in titles)
+    # too-short queries return nothing (no full-table dumps)
+    assert client.get("/api/title_suggest", {"q": "d"}).json() == []
+
+
+def test_onboard_and_profile_edit_render_tagchips(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    r = Client().get("/onboard")
+    assert r.content.count(b'data-tagchips="1"') == 5
+    assert b'data-suggest="/api/title_suggest"' in r.content
+    assert b"tc-wrap" in r.content  # widget include present
+    # profile edit: chips on list fields only, never on salary
+    conn.execute("INSERT INTO applicants (name, user_ref, profile_path,"
+                 " edit_token) VALUES ('T','tuser','p','tok123')")
+    conn.commit()
+    r = Client().get("/profile/tuser/tok123")
+    assert r.content.count(b'data-tagchips="1"') == 5
+    body = r.content.decode()
+    salary_line = [ln for ln in body.splitlines() if 'name="salary_min"' in ln]
+    assert salary_line and "data-tagchips" not in salary_line[0]

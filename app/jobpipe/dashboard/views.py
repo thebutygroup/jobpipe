@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import logging
 
-from django.http import HttpResponse, HttpResponseBadRequest
+from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_GET, require_POST
 
@@ -446,6 +446,36 @@ def healthz(request):
     return HttpResponse("ok", content_type="text/plain")
 
 
+@require_GET
+def title_suggest(request):
+    """Type-ahead for the title tag inputs: REAL posting titles, most common
+    first, so users pick names jobs are actually listed under (which is what
+    the prefilter matches against). Public-safe: it returns nothing but the
+    titles of open, public postings."""
+    q = (request.GET.get("q") or "").strip()
+    if not (2 <= len(q) <= 80):
+        return JsonResponse([], safe=False)
+    conn = connect()
+    try:
+        rows = conn.execute(
+            "SELECT title, COUNT(*) AS n FROM postings"
+            " WHERE closed_at IS NULL AND duplicate_of IS NULL"
+            "   AND title LIKE ?"
+            " GROUP BY lower(title) ORDER BY n DESC, title LIMIT 8",
+            (f"%{q}%",)).fetchall()
+        return JsonResponse([r["title"] for r in rows], safe=False)
+    finally:
+        conn.close()
+
+
+# List-valued profile fields that render as tag-chips (the widget keeps the
+# comma-joined server contract, so this is presentation only).
+CHIP_FIELDS = {"target_titles", "title_synonyms", "skills", "locations_ok",
+               "hard_nos"}
+CHIP_SUGGEST = {"target_titles": "/api/title_suggest",
+                "title_synonyms": "/api/title_suggest"}
+
+
 def profile_edit(request, user_ref: str, token: str):
     """Self-serve profile view/edit behind a per-user secret token (emailed).
     Structured fields with hard limits — never raw YAML. Injection-flagged
@@ -491,7 +521,9 @@ def profile_edit(request, user_ref: str, token: str):
                     error, fields = str(e), submitted
         limits = safety.FIELD_LIMITS
         form = [{"name": n, "label": lb, "kind": k, "ph": ph,
-                 "value": fields.get(n, ""), "limit": limits.get(n, 200)}
+                 "value": fields.get(n, ""), "limit": limits.get(n, 200),
+                 "chips": n in CHIP_FIELDS,
+                 "suggest": CHIP_SUGGEST.get(n, "")}
                 for n, lb, k, ph in FORM_FIELDS]
     finally:
         conn.close()

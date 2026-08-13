@@ -1,0 +1,168 @@
+{% comment %}
+Tag-chip input widget (Chunk 5, pulled forward 13 Aug at Joe's request).
+Dependency-free, single include. Usage: add data-tagchips="1" to any text
+input whose value is a comma-separated list; optionally data-suggest="/url"
+for type-ahead (endpoint returns a JSON array of strings for ?q=).
+
+Contract: the ORIGINAL input keeps its name and carries the joined
+"A, B, C" string at all times — the server never knows chips exist. With
+JS off the include does nothing and the plain comma-separated input
+remains, so the form still submits fine.
+
+A11y: WAI-ARIA combobox pattern — role=combobox entry, role=listbox
+suggestions, aria-activedescendant virtual focus, Esc closes, and each
+chip's remove button is labelled "Remove <tag>".
+{% endcomment %}
+<style>
+.tc-box{position:relative;max-width:540px}
+.tc-wrap{display:flex;flex-wrap:wrap;gap:6px;align-items:center;cursor:text;
+  border:1px solid var(--line,#c9c9c9);border-radius:8px;padding:6px;
+  background:var(--card,#fff)}
+.tc-wrap:focus-within{border-color:var(--accent,#4a90d9)}
+.tc-chip{display:inline-flex;align-items:center;gap:6px;font-size:13px;
+  background:var(--accent-soft,#e8f1fb);border-radius:999px;padding:3px 10px;
+  max-width:100%;overflow-wrap:anywhere}
+.tc-chip button{border:0;background:none;cursor:pointer;font-size:14px;
+  line-height:1;padding:0 2px;color:inherit;opacity:.65}
+.tc-chip button:hover{opacity:1}
+.tc-entry{flex:1;min-width:130px;border:0 !important;outline:none !important;
+  padding:4px;background:transparent;font:inherit}
+.tc-list{position:absolute;z-index:40;left:0;right:0;margin-top:3px;
+  background:var(--card,#fff);border:1px solid var(--line,#c9c9c9);
+  border-radius:8px;max-height:220px;overflow:auto;
+  box-shadow:0 4px 14px rgba(0,0,0,.12)}
+.tc-list [role=option]{padding:7px 10px;cursor:pointer;font-size:13px}
+.tc-list [role=option][aria-selected=true],
+.tc-list [role=option]:hover{background:var(--accent-soft,#e8f1fb)}
+</style>
+<script>
+(function () {
+  "use strict";
+  function init(input) {
+    if (input.dataset.tcDone) return;
+    input.dataset.tcDone = "1";
+    var box = document.createElement("div"); box.className = "tc-box";
+    var wrap = document.createElement("div"); wrap.className = "tc-wrap";
+    var entry = document.createElement("input");
+    entry.className = "tc-entry"; entry.type = "text";
+    entry.placeholder = input.placeholder || "";
+    var listId = "tc-list-" + (input.name || Math.random().toString(36).slice(2));
+    entry.setAttribute("role", "combobox");
+    entry.setAttribute("aria-expanded", "false");
+    entry.setAttribute("aria-autocomplete", "list");
+    entry.setAttribute("aria-controls", listId);
+    var list = document.createElement("div");
+    list.className = "tc-list"; list.id = listId; list.hidden = true;
+    list.setAttribute("role", "listbox");
+    input.parentNode.insertBefore(box, input);
+    box.appendChild(wrap); wrap.appendChild(entry); box.appendChild(list);
+    input.type = "hidden";           // original input stays the value holder
+
+    var tags = [];
+    function push(t) {
+      t = (t || "").trim().replace(/\s+/g, " ").slice(0, 80);
+      if (!t) return;
+      var low = t.toLowerCase();
+      if (tags.some(function (x) { return x.toLowerCase() === low; })) return;
+      tags.push(t);
+    }
+    function sync() { input.value = tags.join(", "); render(); }
+    function render() {
+      wrap.querySelectorAll(".tc-chip").forEach(function (c) { c.remove(); });
+      tags.forEach(function (t, i) {
+        var chip = document.createElement("span"); chip.className = "tc-chip";
+        var tx = document.createElement("span"); tx.textContent = t;
+        var x = document.createElement("button");
+        x.type = "button"; x.textContent = "×";
+        x.setAttribute("aria-label", "Remove " + t);
+        x.addEventListener("click", function () {
+          tags.splice(i, 1); sync(); entry.focus();
+        });
+        chip.appendChild(tx); chip.appendChild(x);
+        wrap.insertBefore(chip, entry);
+      });
+      entry.placeholder = tags.length ? "" : (input.placeholder || "");
+    }
+    function commit() {
+      var v = entry.value; entry.value = "";
+      v.split(",").forEach(push); sync(); close();
+    }
+
+    var url = input.dataset.suggest || "", timer = null, items = [], active = -1;
+    function close() {
+      list.hidden = true; active = -1;
+      entry.setAttribute("aria-expanded", "false");
+      entry.removeAttribute("aria-activedescendant");
+    }
+    function open(arr) {
+      items = arr.filter(function (t) {
+        var low = String(t).toLowerCase();
+        return !tags.some(function (x) { return x.toLowerCase() === low; });
+      });
+      list.innerHTML = ""; active = -1;
+      if (!items.length) { close(); return; }
+      items.forEach(function (t, i) {
+        var o = document.createElement("div");
+        o.setAttribute("role", "option"); o.id = listId + "-" + i;
+        o.textContent = t;
+        o.addEventListener("mousedown", function (e) {
+          e.preventDefault();           // don't blur the entry
+          push(t); entry.value = ""; sync(); close();
+        });
+        list.appendChild(o);
+      });
+      list.hidden = false; entry.setAttribute("aria-expanded", "true");
+    }
+    function highlight(d) {
+      if (list.hidden || !items.length) return;
+      active = (active + d + items.length) % items.length;
+      list.querySelectorAll("[role=option]").forEach(function (o, i) {
+        o.setAttribute("aria-selected", i === active ? "true" : "false");
+        if (i === active) {
+          entry.setAttribute("aria-activedescendant", o.id);
+          o.scrollIntoView({ block: "nearest" });
+        }
+      });
+    }
+    entry.addEventListener("input", function () {
+      var q = entry.value.trim();
+      if (!url || q.length < 2) { close(); return; }
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        fetch(url + "?q=" + encodeURIComponent(q))
+          .then(function (r) { return r.json(); })
+          .then(function (arr) { if (entry.value.trim() === q) open(arr); })
+          .catch(close);
+      }, 150);
+    });
+    entry.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowDown") { e.preventDefault(); highlight(1); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); highlight(-1); }
+      else if (e.key === "Enter") {
+        e.preventDefault();             // Enter makes a tag, never submits
+        if (!list.hidden && active >= 0) {
+          push(items[active]); entry.value = ""; sync(); close();
+        } else { commit(); }
+      } else if (e.key === ",") { e.preventDefault(); commit(); }
+      else if (e.key === "Escape") { close(); }
+      else if (e.key === "Backspace" && !entry.value && tags.length) {
+        tags.pop(); sync();
+      }
+    });
+    entry.addEventListener("blur", function () {
+      setTimeout(commit, 120);          // after option mousedown, if any
+    });
+    entry.addEventListener("paste", function (e) {
+      var d = (e.clipboardData || window.clipboardData).getData("text");
+      if (d && d.indexOf(",") > -1) {
+        e.preventDefault(); d.split(",").forEach(push); sync();
+      }
+    });
+    wrap.addEventListener("click", function () { entry.focus(); });
+
+    (input.value || "").split(",").forEach(push);
+    sync();
+  }
+  document.querySelectorAll("input[data-tagchips]").forEach(init);
+})();
+</script>

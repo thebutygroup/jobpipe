@@ -20,8 +20,8 @@ b.disabled=true;b.textContent='Creating your page…';return true;}
   <div class="ob">
     <label>User name * <span>(letters, numbers, - or _ · becomes your page address)</span></label>
     <input name="full_name" value="{{ form.full_name }}" required maxlength="30" pattern="[A-Za-z0-9_-]{1,30}" placeholder="e.g. maya">
-    <label>The job titles you want * <span>(3–5 comma-separated titles get the best coverage — one very specific title is fine too, and we'll respect it)</span></label>
-    <input name="target_titles" value="{{ form.target_titles }}" required placeholder="e.g. Head of Data, Data Director, Analytics Lead">
+    <label>The job titles you want * <span>(type a title, press Enter — each becomes its own tag. Use real-world titles jobs are listed under; 3–5 gets the best coverage, and suggestions come from live postings)</span></label>
+    <input name="target_titles" value="{{ form.target_titles }}" required placeholder="e.g. Head of Data, Data Director, Analytics Lead" data-tagchips="1" data-suggest="/api/title_suggest">
     <label>What are you looking for? * <span>(one sentence is enough — this drives the matching)</span></label>
     <textarea name="positioning" rows="3" required placeholder="I'm a ... looking for ... What matters to me is ...">{{ form.positioning }}</textarea>
     <label>Email <span>(required — we send a confirmation link, and matching starts when you click it)</span></label>
@@ -31,16 +31,16 @@ b.disabled=true;b.textContent='Creating your page…';return true;}
       <summary>Add more detail — sharper matches (all optional)</summary>
       <label>Where are you based?</label>
       <input name="location" value="{{ form.location }}" placeholder="e.g. London">
-      <label>Locations you'd work, comma-separated <span>(default: London)</span></label>
-      <input name="locations" value="{{ form.locations }}" placeholder="London, Remote UK">
+      <label>Locations you'd work <span>(default: London)</span></label>
+      <input name="locations" value="{{ form.locations }}" placeholder="London, Remote UK" data-tagchips="1">
       <label>Experience — roles, years, domains, notable projects</label>
       <textarea name="experience" rows="4" placeholder="5 yrs data engineering: 3 at FinCo (Spark ETL, dbt), 2 at StartupX (streaming, Kafka)...">{{ form.experience }}</textarea>
-      <label>Key skills, comma-separated</label>
-      <input name="skills" value="{{ form.skills }}" placeholder="Python, Spark, dbt, Airflow, AWS">
-      <label>Also-acceptable title variants, comma-separated</label>
-      <input name="title_synonyms" value="{{ form.title_synonyms }}" placeholder="Analytics Engineer, ETL Developer">
-      <label>Deal-breakers, comma-separated</label>
-      <input name="hard_nos" value="{{ form.hard_nos }}" placeholder="e.g. fully on-site, defence">
+      <label>Key skills</label>
+      <input name="skills" value="{{ form.skills }}" placeholder="Python, Spark, dbt, Airflow, AWS" data-tagchips="1">
+      <label>Also-acceptable title variants</label>
+      <input name="title_synonyms" value="{{ form.title_synonyms }}" placeholder="Analytics Engineer, ETL Developer" data-tagchips="1" data-suggest="/api/title_suggest">
+      <label>Deal-breakers</label>
+      <input name="hard_nos" value="{{ form.hard_nos }}" placeholder="e.g. fully on-site, defence" data-tagchips="1">
       <label>Minimum salary (GBP, numbers only — never displayed)</label>
       <input name="salary_min" value="{{ form.salary_min }}" placeholder="70000">
       <label>Preferred salary</label>
@@ -61,4 +61,5 @@ b.disabled=true;b.textContent='Creating your page…';return true;}
     <p style="margin-top:18px"><button type="submit">Start matching me</button></p>
   </div>
 </form>
+{% include "tagchips.html" %}
 {% endblock %}
