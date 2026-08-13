@@ -86,6 +86,10 @@ def send_matches_ready(conn, applicant_row, limit: int = 5,
         return f"{user_ref}: could not load profile ({e})"
     if not email:
         return f"{user_ref}: no email on their profile — nothing to send"
+    if not force and not applicant_row["email_confirmed_at"]:
+        # Unconfirmed (never confirmed, or unconfirmed by a bounce): sending
+        # is at best wasted and at worst another NDR in the tracking inbox.
+        return f"{user_ref}: email not confirmed — not sending"
     if not force and already_sent(conn, user_ref):
         return f"{user_ref}: matches-ready email already sent (use force to resend)"
     matches = top_matches(conn, applicant_row["id"], limit=limit)

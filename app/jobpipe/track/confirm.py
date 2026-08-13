@@ -14,7 +14,7 @@ import re
 from email.header import decode_header
 
 from ..config import settings
-from ..db import connect, heartbeat, transition, tx
+from ..db import connect, heartbeat, log_event, transition, tx
 
 log = logging.getLogger(__name__)
 INTENT = re.compile(r"application (received|submitted)|thank you for applying|"
@@ -137,6 +137,65 @@ def process_opt_outs(conn, messages) -> int:
     return stopped
 
 
+BOUNCE_SENDER = re.compile(r"mailer-daemon|postmaster@", re.I)
+BOUNCE_SUBJECT = re.compile(
+    r"address not found|delivery status notification|undeliverable|"
+    r"mail delivery (?:failed|subsystem)|returned mail|"
+    r"delivery (?:failure|incomplete)|message not delivered", re.I)
+ADDR = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+
+
+def process_bounces(conn, messages) -> int:
+    """A bounce (NDR) unconfirms the address it names.
+
+    email_confirmed_at IS NOT NULL is the one gate the matcher roster and the
+    weekly digest already honour, so clearing it stops both the model spend
+    and every future email for that applicant until they confirm a working
+    address. This is how grandfathered pre-double-opt-in signups with dead
+    addresses (maya@example.com...) fall out of the pipeline: the first NDR
+    Gmail returns does it.
+
+    Deliberately strict, mirroring process_opt_outs: the message must LOOK
+    like an NDR (mailer-daemon/postmaster sender, or a bounce subject) AND
+    name an address equal to an applicant's profile email. Our own sending
+    address is excluded so an NDR quoting our From: header can't unconfirm
+    the operator."""
+    from ..profile import load_applicant_profile
+
+    own = {a for a in ((settings.mail_from or "").strip().lower(),
+                       (settings.smtp_user or "").strip().lower()) if a}
+    bounced = set()
+    for sender, subject, _msg_id, body in messages:
+        if not (BOUNCE_SENDER.search(sender or "")
+                or BOUNCE_SUBJECT.search(subject or "")):
+            continue
+        found = {a.lower() for a in ADDR.findall(f"{subject or ''}\n{body or ''}")}
+        bounced |= found - own
+    if not bounced:
+        return 0
+
+    dropped = 0
+    rows = conn.execute(
+        "SELECT * FROM applicants WHERE email_confirmed_at IS NOT NULL").fetchall()
+    for row in rows:
+        try:
+            profile = load_applicant_profile(row)
+            addr = (getattr(profile.identity, "email", "") or "").strip().lower()
+        except Exception:
+            continue
+        if addr and addr in bounced:
+            with tx(conn):
+                conn.execute("UPDATE applicants SET email_confirmed_at = NULL"
+                             " WHERE id = ?", (row["id"],))
+                log_event(conn, "email:BOUNCED",
+                          payload={"applicant_id": row["id"],
+                                   "user_ref": row["user_ref"], "to": addr})
+            log.warning("bounce: %s <%s> unconfirmed — no more matching or "
+                        "email until they re-confirm", row["user_ref"], addr)
+            dropped += 1
+    return dropped
+
+
 def process_outcomes(conn, messages) -> int:
     """Forwarded emails (Fwd:/FW: subjects) become outcome records."""
     from .outcomes import record_outcome
@@ -177,10 +236,11 @@ def main() -> None:
         n = match_and_confirm(conn, msgs)
         o = process_outcomes(conn, msgs)
         s = process_opt_outs(conn, msgs)
+        b = process_bounces(conn, msgs)
         heartbeat(conn, "track", ok=True,
-                  detail=f"confirmed={n} outcomes={o} opt_outs={s}")
-        log.info("confirmation tracking: %d confirmed, %d outcomes, %d opt-outs",
-                 n, o, s)
+                  detail=f"confirmed={n} outcomes={o} opt_outs={s} bounces={b}")
+        log.info("confirmation tracking: %d confirmed, %d outcomes, %d opt-outs,"
+                 " %d bounces", n, o, s, b)
     except Exception as e:
         heartbeat(conn, "track", ok=False, detail=str(e))
         raise

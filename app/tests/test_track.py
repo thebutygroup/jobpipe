@@ -75,3 +75,73 @@ def test_unsubscribe_is_honoured_too(conn):
     _seed_applicant_with_email(conn, "alice", "alice@example.com")
     assert confirm.process_opt_outs(conn, [
         ("alice@example.com", "Re: matches", "<id>", "Unsubscribe.")]) == 1
+
+
+# ---- bounces: an NDR unconfirms the address it names -------------------------
+
+GMAIL_NDR_BODY = """\
+Address not found
+
+Your message wasn't delivered to maya@example.com because the domain
+example.com couldn't be found. Check for typos or unnecessary spaces and
+try again.
+
+LEARN MORE
+
+The response was:
+DNS Error: domain example.com not found
+"""
+
+
+def _confirm_addr(conn, user_ref):
+    conn.execute("UPDATE applicants SET email_confirmed_at ="
+                 " '2026-08-01T00:00:00' WHERE user_ref = ?", (user_ref,))
+    conn.commit()
+
+
+def test_gmail_ndr_unconfirms_the_named_applicant(conn):
+    _seed_applicant_with_email(conn, "maya", "maya@example.com")
+    _seed_applicant_with_email(conn, "alice", "alice@real.com")
+    _confirm_addr(conn, "maya")
+    _confirm_addr(conn, "alice")
+    n = confirm.process_bounces(conn, [
+        ("Mail Delivery Subsystem <mailer-daemon@googlemail.com>",
+         "Delivery Status Notification (Failure)", "<ndr-1>", GMAIL_NDR_BODY)])
+    assert n == 1
+    rows = {r["user_ref"]: r["email_confirmed_at"] for r in
+            conn.execute("SELECT user_ref, email_confirmed_at FROM applicants")}
+    assert rows["maya"] is None          # unconfirmed — out of the pipeline
+    assert rows["alice"] is not None     # untouched
+    ev = conn.execute("SELECT payload_json FROM events WHERE"
+                      " event_type='email:BOUNCED'").fetchone()
+    assert "maya@example.com" in ev["payload_json"]
+
+
+def test_ordinary_mail_naming_an_address_is_not_a_bounce(conn):
+    _seed_applicant_with_email(conn, "maya", "maya@example.com")
+    _confirm_addr(conn, "maya")
+    n = confirm.process_bounces(conn, [
+        ("recruiter@acme.com", "Intro for maya", "<m-1>",
+         "You should meet maya@example.com, she's great")])
+    assert n == 0
+    assert conn.execute("SELECT email_confirmed_at FROM applicants"
+                        ).fetchone()["email_confirmed_at"] is not None
+
+
+def test_own_sending_address_in_an_ndr_is_ignored(conn, monkeypatch):
+    from jobpipe.config import settings
+    monkeypatch.setattr(settings, "smtp_user", "jobpipe@thebutygroup.com")
+    _seed_applicant_with_email(conn, "owner", "jobpipe@thebutygroup.com")
+    _confirm_addr(conn, "owner")
+    n = confirm.process_bounces(conn, [
+        ("mailer-daemon@googlemail.com", "Address not found", "<ndr-2>",
+         "From: jobpipe@thebutygroup.com\nsome bounce with only our address")])
+    assert n == 0
+
+
+def test_already_unconfirmed_bounce_is_a_noop(conn):
+    _seed_applicant_with_email(conn, "maya", "maya@example.com")  # never confirmed
+    n = confirm.process_bounces(conn, [
+        ("mailer-daemon@googlemail.com",
+         "Delivery Status Notification (Failure)", "<ndr-3>", GMAIL_NDR_BODY)])
+    assert n == 0  # nothing to unconfirm, no event spam

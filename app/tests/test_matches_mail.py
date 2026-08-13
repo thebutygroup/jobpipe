@@ -8,7 +8,7 @@ from jobpipe.db import upsert_posting
 from jobpipe.models import PostingDTO
 
 
-def seed_user(conn, email="user@example.com", n_matches=3):
+def seed_user(conn, email="user@example.com", n_matches=3, confirmed=True):
     profile_yaml = yaml.safe_dump({
         "identity": {"full_name": "Test User", "email": email,
                      "location": "London"},
@@ -16,8 +16,10 @@ def seed_user(conn, email="user@example.com", n_matches=3):
                         "locations_ok": ["London"]},
     })
     conn.execute("INSERT INTO applicants (name, user_ref, profile_path,"
-                 " profile_yaml, active) VALUES ('Test User','tuser','',?,1)",
-                 (profile_yaml,))
+                 " profile_yaml, active, email_confirmed_at)"
+                 " VALUES ('Test User','tuser','',?,1,?)",
+                 (profile_yaml,
+                  "2026-08-01T00:00:00" if confirmed else None))
     aid = conn.execute("SELECT id FROM applicants WHERE user_ref='tuser'"
                        ).fetchone()["id"]
     for i in range(n_matches):
@@ -74,3 +76,17 @@ def test_no_email_and_no_matches_are_graceful(conn, monkeypatch):
     row = conn.execute("SELECT * FROM applicants WHERE id=?", (row["id"],)).fetchone()
     out = matches_mail.send_matches_ready(conn, row)
     assert "no matches" in out
+
+
+def test_unconfirmed_address_gets_no_email(conn, monkeypatch):
+    """Never confirmed (or unconfirmed by a bounce) → no send until they
+    confirm. force=True stays available as the operator override."""
+    row = seed_user(conn, confirmed=False)
+    sent = []
+    from jobpipe import notify
+    monkeypatch.setattr(notify, "send_email",
+                        lambda **kw: sent.append(kw) or True)
+    out = matches_mail.send_matches_ready(conn, row)
+    assert "not confirmed" in out and sent == []
+    out2 = matches_mail.send_matches_ready(conn, row, force=True)
+    assert "sent" in out2 and len(sent) == 1
