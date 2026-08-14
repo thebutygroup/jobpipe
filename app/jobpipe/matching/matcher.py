@@ -13,6 +13,8 @@ import json
 import logging
 import re
 
+import yaml
+
 from pydantic import BaseModel, Field, ValidationError
 
 from .. import health
@@ -97,12 +99,28 @@ def parse_response(text: str) -> MatchResult:
     return MatchResult.model_validate(json.loads(cleaned))
 
 
+def parse_combined(text: str):
+    """(MatchResult, CandidateFit | None) from ONE combined reply. The
+    candidate half is None when its fields are absent — legacy cached
+    responses and resume-less evaluations parse exactly as before (R3)."""
+    from .candidate_fit import parse_candidate
+    cleaned = re.sub(r"^```(json)?|```$", "", text.strip(), flags=re.MULTILINE).strip()
+    payload = json.loads(cleaned)
+    return MatchResult.model_validate(payload), parse_candidate(payload)
+
+
 def request_model(client, profile: Profile, posting, raw_yaml: str = "",
-                  model: str | None = None) -> tuple[str, dict]:
+                  model: str | None = None,
+                  extra_block: str = "") -> tuple[str, dict]:
     """One API call: (raw_text, usage). Parsing is the CALLER's problem —
     a malformed response must still report its real token bill, which is why
     this is split from call_model (llm_usage records every call, not every
-    usable evaluation)."""
+    usable evaluation).
+
+    extra_block (R3): the CANDIDATE FIT segment for resume users. Empty
+    string = the prompt AND max_tokens are byte-for-byte what they were
+    before R3 — resume-less users are untouched (regression-tested)."""
+    from .candidate_fit import OUTPUT_SPEC
     prompt = PROMPT.format(
         profile_summary=profile_summary(profile, raw_yaml),
         target_titles=", ".join(profile.preferences.target_titles),
@@ -112,8 +130,13 @@ def request_model(client, profile: Profile, posting, raw_yaml: str = "",
         location=posting["location"] or "unspecified",
         description=(posting["description_text"] or "")[:6000],
     )
+    max_tokens = 600
+    if extra_block:
+        prompt = f"{prompt}\n{extra_block}\n{OUTPUT_SPEC}"
+        max_tokens = 900          # the two extra lists need breathing room
     resp = client.messages.create(
-        model=model or settings.match_model, max_tokens=600, temperature=0,
+        model=model or settings.match_model, max_tokens=max_tokens,
+        temperature=0,
         messages=[{"role": "user", "content": prompt}],
     )
     text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
@@ -300,6 +323,20 @@ def run(conn, profile: Profile, applicant_id: int, client=None, raw_yaml: str = 
         pending = pending[:settings.match_test_limit]
         log.info("TEST MODE: matcher limited to %d postings", len(pending))
     total = len(pending)
+    # Bidirectional match (R3): built ONCE per run — identical for every
+    # posting in this user's cycle (Chunk 2's cache layout will exploit
+    # that). Empty when no resume / flagged text: prompts byte-identical
+    # to pre-R3.
+    from ..resume import prompt_text_for
+    from .candidate_fit import build_block
+    try:
+        _yaml_data = yaml.safe_load(raw_yaml) or {} if raw_yaml.strip() else {}
+    except Exception:
+        _yaml_data = {}
+    cand_block = build_block(prompt_text_for(conn, applicant_id), _yaml_data)
+    if cand_block:
+        log.info("applicant %d has a resume on file — candidate-fit rides "
+                 "this run's calls", applicant_id)
     for i, posting in enumerate(pending, 1):
         if (i > n_primary
                 and stats["matched"] >= settings.match_min_per_run):
@@ -320,12 +357,13 @@ def run(conn, profile: Profile, applicant_id: int, client=None, raw_yaml: str = 
                      "moving to next applicant", applicant_id, per_user_cap)
             break
         stats["considered"] += 1
-        result, tokens = None, 0
+        result, cand, tokens = None, None, 0
         for attempt in (1, 2):
             usage = None
             try:
-                text, usage = request_model(client, profile, posting, raw_yaml)
-                result = parse_response(text)
+                text, usage = request_model(client, profile, posting, raw_yaml,
+                                            extra_block=cand_block)
+                result, cand = parse_combined(text)
                 tokens = usage["input"] + usage["output"]
                 with tx(conn):
                     record_llm_usage(conn, settings.match_model, usage,
@@ -362,12 +400,16 @@ def run(conn, profile: Profile, applicant_id: int, client=None, raw_yaml: str = 
             conn.execute(
                 "INSERT INTO matches (posting_id, applicant_id, score, reasons_json,"
                 " highlights_json, alignment_json, extracted_questions_json, model,"
-                " tokens_used, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                " tokens_used, created_at, candidate_fit_score, candidate_fit_json)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 (posting["id"], applicant_id, result.score, json.dumps(result.reasons),
                  json.dumps(result.highlights),
                  json.dumps([a.model_dump() for a in result.alignment]),
                  json.dumps(result.questions_visible),
-                 settings.match_model, tokens, now()),
+                 settings.match_model, tokens, now(),
+                 cand.candidate_fit if cand else None,
+                 json.dumps({"bring": cand.bring, "unlisted": cand.unlisted})
+                 if cand else None),
             )
             if state == MATCHED:
                 conn.execute(

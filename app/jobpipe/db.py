@@ -312,6 +312,12 @@ def connect(db_path: str | None = None) -> sqlite3.Connection:
     for col in ("highlights_json", "alignment_json"):
         if col not in mcols:
             conn.execute(f"ALTER TABLE matches ADD COLUMN {col} TEXT NOT NULL DEFAULT '[]'")
+    # Bidirectional match (R3): the second verdict rides the same call.
+    # NULL = evaluated without a resume (or a legacy row) — never a guess.
+    if "candidate_fit_score" not in mcols:
+        conn.execute("ALTER TABLE matches ADD COLUMN candidate_fit_score INTEGER")
+    if "candidate_fit_json" not in mcols:
+        conn.execute("ALTER TABLE matches ADD COLUMN candidate_fit_json TEXT")
     _backfill_user_refs(conn)
     return conn
 
