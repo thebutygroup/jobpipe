@@ -61,7 +61,7 @@ def test_resume_user_gets_both_verdicts_in_one_call(conn, profile):
     _run_one(conn, profile, client, aid=aid)
     call = client.calls[0]
     assert len(client.calls) == 1                     # ONE call, two verdicts
-    assert call["max_tokens"] == 900
+    assert call["max_tokens"] == 1600
     assert "CANDIDATE FIT" in call["prompt"]
     assert "Senior Data Engineer with ten years" in call["prompt"]  # resume text
     # positive-framing rule applies to the CANDIDATE FIT block (the existing

@@ -133,12 +133,19 @@ def request_model(client, profile: Profile, posting, raw_yaml: str = "",
     max_tokens = 600
     if extra_block:
         prompt = f"{prompt}\n{extra_block}\n{OUTPUT_SPEC}"
-        max_tokens = 900          # the two extra lists need breathing room
+        # 900 truncated verbose postings on the first live run (three
+        # both-attempt parse failures, output pinned at the cap). Output
+        # tokens only cost what's generated — the cap is free insurance.
+        max_tokens = 1600
     resp = client.messages.create(
         model=model or settings.match_model, max_tokens=max_tokens,
         temperature=0,
         messages=[{"role": "user", "content": prompt}],
     )
+    if getattr(resp, "stop_reason", "") == "max_tokens":
+        log.warning("matcher response truncated at max_tokens=%d — the JSON "
+                    "is almost certainly unparseable; raise the cap",
+                    max_tokens)
     text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
     usage = {"input": resp.usage.input_tokens,
              "output": resp.usage.output_tokens,
