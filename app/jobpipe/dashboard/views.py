@@ -294,6 +294,7 @@ def profile_link_email(request, user_ref: str):
             recent = conn.execute(
                 "SELECT 1 FROM events WHERE event_type = 'profile_link_email'"
                 " AND json_extract(payload_json,'$.user_ref') = ?"
+                " AND json_extract(payload_json,'$.ok') = 1"
                 " AND created_at >= datetime('now','-1 day') LIMIT 1",
                 (user_ref,)).fetchone()
             eligible = recent is None

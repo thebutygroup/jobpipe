@@ -195,9 +195,18 @@ def test_matches_page_banner_and_profile_link_email(conn, monkeypatch):
     # rate-limited: second click inside a day sends nothing, same response
     r2 = c.post("/job_matches/tuser/profile_link")
     assert "plink=sent" in r2.headers["Location"] and len(sent) == 1
+    # but a FAILED send must not consume the daily allowance (the SMTP
+    # outage of 14 Aug ate the day's one attempt): mark today's send as
+    # failed and the button works again
+    conn.execute("UPDATE events SET payload_json ="
+                 " json_set(payload_json,'$.ok', 0)"
+                 " WHERE event_type='profile_link_email'")
+    conn.commit()
+    c.post("/job_matches/tuser/profile_link")
+    assert len(sent) == 2
     # unknown user: identical response shape, nothing sent (no oracle)
     r3 = c.post("/job_matches/nobody/profile_link")
-    assert "plink=sent" in r3.headers["Location"] and len(sent) == 1
+    assert "plink=sent" in r3.headers["Location"] and len(sent) == 2
     # once a resume exists the upsell flips to a persistent profile door
     resmod.save_resume(conn, aid, "tuser", "cv.pdf", make_pdf(CV * 3))
     page = c.get("/job_matches/tuser").content
