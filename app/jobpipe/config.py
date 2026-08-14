@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     captcha_resolver: str = "human"          # human | service
     twocaptcha_api_key: str = ""
     dashboard_base_url: str = "http://localhost:8010"
+    # Owner mode on /applicants (?key=...): unlocks per-user profile links
+    # and resume status. Blank = never unlocks. Interim until the login
+    # build's admin role (login-design.md L4) replaces it.
+    admin_key: str = ""
     imap_host: str = "imap.gmail.com"        # confirmation tracking mailbox
     imap_port: int = 993
     freetext_model: str = "claude-sonnet-4-6"  # prose quality matters more than triage

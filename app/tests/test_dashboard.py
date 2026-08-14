@@ -595,3 +595,26 @@ def test_confirmed_page_shows_chips_and_full_match_door(conn, monkeypatch):
     # signup landing page (pre-confirm) shows the chips too
     r2 = _signup(Client(), "maya2")
     assert b"Senior Data Engineer" in r2.content and b"Quick match" in r2.content
+
+
+# ---- owner mode on /applicants: keyed profile links --------------------------
+
+def test_applicants_owner_mode_is_keyed_and_off_by_default(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    from jobpipe.config import settings
+    conn.execute("INSERT INTO applicants (name, user_ref, profile_path, active)"
+                 " VALUES ('T','tuser','p',1)")
+    conn.commit()
+    c = Client()
+    # no key configured: nothing unlocks, even with a guess
+    monkeypatch.setattr(settings, "admin_key", "")
+    assert b"/profile/tuser/" not in c.get("/applicants").content
+    assert b"/profile/tuser/" not in c.get("/applicants", {"key": ""}).content
+    # key configured but absent/wrong: still locked, no tokens in the page
+    monkeypatch.setattr(settings, "admin_key", "sekrit")
+    assert b"/profile/tuser/" not in c.get("/applicants").content
+    assert b"/profile/tuser/" not in c.get("/applicants", {"key": "nope"}).content
+    # right key: profile link + status line appear
+    page = c.get("/applicants", {"key": "sekrit"}).content
+    assert b"/profile/tuser/" in page and b"profile page" in page
+    assert b"no resume" in page and b"email unconfirmed" in page

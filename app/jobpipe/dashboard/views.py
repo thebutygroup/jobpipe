@@ -788,10 +788,35 @@ def applicants_index(request):
             "     AND o.outcome_type IN ('interview_invite','assessment')) AS n_interviews "
             "FROM applicants ap ORDER BY ap.active DESC, ap.name").fetchall()
         capped = signups_capped_today(conn)
+        applicants = [dict(r) for r in rows]
+        # Owner mode (?key= must equal ADMIN_KEY, which must be set):
+        # per-user profile-page links + resume status. Constant-time compare;
+        # blank key config can never unlock. Interim super-user view until
+        # the login build's admin role lands (login-design.md).
+        import hmac as _hmac
+        from ..config import settings as _settings
+        owner = bool(_settings.admin_key) and _hmac.compare_digest(
+            request.GET.get("key", ""), _settings.admin_key)
+        if owner:
+            from ..profile_edit import ensure_edit_token, is_quick_only
+            from ..resume import get_resume
+            full = {r["id"]: r for r in conn.execute(
+                "SELECT * FROM applicants").fetchall()}
+            for ap in applicants:
+                row = full[ap["id"]]
+                ap["edit_url"] = (f"/profile/{ap['user_ref']}/"
+                                  f"{ensure_edit_token(conn, ap['id'])}"
+                                  if ap["user_ref"] else "")
+                res = get_resume(conn, ap["id"])
+                ap["resume"] = (f"{res['filename']} · {res['updated_at'][:10]}"
+                                if res else "")
+                ap["quick_only"] = is_quick_only(row)
+                ap["confirmed"] = bool(row["email_confirmed_at"])
     finally:
         conn.close()
     return render(request, "applicants.html",
-                  {"applicants": [dict(r) for r in rows], "signups_capped": capped})
+                  {"applicants": applicants, "signups_capped": capped,
+                   "owner": owner})
 
 
 @require_POST

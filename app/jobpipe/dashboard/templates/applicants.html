@@ -12,7 +12,15 @@
   <p class="meta">
     {% if ap.user_ref %}<a href="/job_matches/{{ ap.user_ref }}">matches page ↗</a> · {% endif %}
     <a href="/stats?applicant={{ ap.id }}">stats</a>
+    {% if owner and ap.edit_url %} · <a href="{{ ap.edit_url }}"><b>profile page ↗</b></a>{% endif %}
   </p>
+  {% if owner %}
+  <p class="meta">
+    {% if ap.confirmed %}email ✓{% else %}<span class="flag">email unconfirmed</span>{% endif %}
+    · {% if ap.quick_only %}Quick match only{% else %}Full match{% endif %}
+    · {% if ap.resume %}resume: {{ ap.resume }}{% else %}no resume{% endif %}
+  </p>
+  {% endif %}
 </div>
 {% empty %}
 <p class="meta">No applicants yet.</p>
