@@ -645,6 +645,67 @@ def profile_edit(request, user_ref: str, token: str):
                    "hide_internal_nav": True})
 
 
+def _owner_key_ok(request) -> bool:
+    """?key= equals ADMIN_KEY (which must be non-blank). Constant-time.
+    Interim super-user check until the login build's admin role (L4)."""
+    import hmac as _hmac
+    from ..config import settings as _settings
+    return bool(_settings.admin_key) and _hmac.compare_digest(
+        request.GET.get("key", ""), _settings.admin_key)
+
+
+@require_GET
+def profile_index(request):
+    """/profile/ — with the owner key: every applicant with a direct link to
+    their profile page. Without it: profiles are private — enter your
+    username and your private link is emailed to the address on file."""
+    u = (request.GET.get("u") or "").strip().lower()
+    if u and USERNAME_RE.match(u):
+        return redirect(f"/profile/{u}")
+    if not _owner_key_ok(request):
+        return render(request, "profile_gate.html",
+                      {"users": None, "ref": "", "hide_internal_nav": True})
+    conn = connect()
+    try:
+        from ..profile_edit import ensure_edit_token
+        from ..resume import get_resume
+        users = []
+        for r in conn.execute("SELECT * FROM applicants"
+                              " ORDER BY active DESC, name").fetchall():
+            users.append({
+                "name": r["name"], "user_ref": r["user_ref"] or "",
+                "active": bool(r["active"]),
+                "confirmed": bool(r["email_confirmed_at"]),
+                "resume": get_resume(conn, r["id"]) is not None,
+                "edit_url": (f"/profile/{r['user_ref']}/"
+                             f"{ensure_edit_token(conn, r['id'])}"
+                             if r["user_ref"] else "")})
+    finally:
+        conn.close()
+    return render(request, "profile_gate.html",
+                  {"users": users, "ref": "", "hide_internal_nav": True})
+
+
+@require_GET
+def profile_shortcut(request, user_ref: str):
+    """/profile/<ref> WITHOUT a token. Owner key → straight through to the
+    token page. Anyone else → the email-me-my-link door, rendered
+    identically whether or not the user exists (no oracle)."""
+    if _owner_key_ok(request):
+        conn = connect()
+        try:
+            row = conn.execute("SELECT id FROM applicants WHERE user_ref = ?",
+                               (user_ref,)).fetchone()
+            if row:
+                from ..profile_edit import ensure_edit_token
+                return redirect(
+                    f"/profile/{user_ref}/{ensure_edit_token(conn, row['id'])}")
+        finally:
+            conn.close()
+    return render(request, "profile_gate.html",
+                  {"users": None, "ref": user_ref, "hide_internal_nav": True})
+
+
 @require_POST
 def resume_upload(request, user_ref: str, token: str):
     """Upload/replace the resume from the private profile page. Same token

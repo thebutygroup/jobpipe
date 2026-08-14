@@ -215,3 +215,44 @@ def test_unconfirmed_user_gets_no_profile_link_email(conn, monkeypatch):
                         lambda **kw: sent.append(kw) or True)
     r = Client().post("/job_matches/tuser/profile_link")
     assert "plink=sent" in r.headers["Location"] and sent == []
+
+
+# ---- /profile/ gate: private for users, index for the super user -------------
+
+def test_profile_gate_public_and_shortcut(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    _seed(conn)
+    from jobpipe.config import settings
+    monkeypatch.setattr(settings, "admin_key", "")
+    c = Client()
+    # /profile/ — private gate with a username form; no tokens anywhere
+    page = c.get("/profile/").content
+    assert b"Profiles are private" in page and b'name="u"' in page
+    assert b"tok123" not in page
+    # the form routes to the per-user door
+    r = c.get("/profile/", {"u": "tuser"})
+    assert r.status_code == 302 and r.headers["Location"] == "/profile/tuser"
+    # /profile/<ref> — email-me door, identical for unknown users (no oracle)
+    known = c.get("/profile/tuser").content
+    unknown = c.get("/profile/nobody").content
+    assert b"Email me my profile link" in known
+    assert b"Email me my profile link" in unknown
+    assert b"tok123" not in known
+
+
+def test_profile_gate_super_user_sees_everyone(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    _seed(conn)
+    from jobpipe.config import settings
+    monkeypatch.setattr(settings, "admin_key", "sekrit")
+    c = Client()
+    # keyed index lists every applicant with direct profile links
+    page = c.get("/profile/", {"key": "sekrit"}).content
+    assert b"All profiles" in page and b"/profile/tuser/tok123" in page
+    assert b"no resume" in page
+    # keyed shortcut goes straight through to the token page
+    r = c.get("/profile/tuser", {"key": "sekrit"})
+    assert r.status_code == 302 and r.headers["Location"] == "/profile/tuser/tok123"
+    # wrong key behaves like the public gate
+    page = c.get("/profile/", {"key": "wrong"}).content
+    assert b"Profiles are private" in page and b"tok123" not in page

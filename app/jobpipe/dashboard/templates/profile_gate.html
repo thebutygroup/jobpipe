@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}profiles — jobpipe{% endblock %}
+{% block content %}
+{% if users %}
+<h1>All profiles</h1>
+<p class="meta">Super-user view — each link opens that user's private
+profile page (view or edit their matching profile and resume).</p>
+{% for u in users %}
+<div class="card">
+  <h2>{{ u.name }}{% if not u.active %} <span class="flag">⚑ inactive</span>{% endif %}</h2>
+  <p class="meta">
+    {% if u.user_ref %}/{{ u.user_ref }} · {% endif %}
+    {% if u.confirmed %}email ✓{% else %}<span class="flag">email unconfirmed</span>{% endif %}
+    · {% if u.resume %}resume ✓{% else %}no resume{% endif %}
+  </p>
+  <p class="meta">
+    {% if u.edit_url %}<a href="{{ u.edit_url }}"><b>open profile ↗</b></a>{% endif %}
+    {% if u.user_ref %} · <a href="/job_matches/{{ u.user_ref }}">matches</a>{% endif %}
+  </p>
+</div>
+{% endfor %}
+{% else %}
+<div class="hero">
+  <h1>Profiles are private</h1>
+  <p class="lede">Your profile page lives at a private link only you should
+  have. We'll email it to the confirmed address on your account.</p>
+</div>
+<div class="card" style="max-width:480px;margin:0 auto">
+  {% if ref %}
+  <p>Get the private profile link for <b>{{ ref }}</b>:</p>
+  <form method="post" action="/job_matches/{{ ref }}/profile_link">{% csrf_token %}
+    <button type="submit">Email me my profile link</button>
+  </form>
+  <p class="meta" style="margin-top:10px">If that account exists and has a
+  confirmed email, the link arrives within a minute. Not you?
+  <a href="/profile/">Enter a different username</a>.</p>
+  {% else %}
+  <form method="get" action="/profile/">
+    <label class="meta" for="pg-u">Your username</label>
+    <input id="pg-u" name="u" maxlength="30" pattern="[A-Za-z0-9_-]{1,30}"
+           placeholder="e.g. maya" required>
+    <p style="margin-top:10px"><button type="submit">Continue</button></p>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}
