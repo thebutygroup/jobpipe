@@ -1,12 +1,17 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="sub">matches for {{ user_ref }} · <a href="/all/{{ user_ref }}">table view</a></div>
-{% if not has_resume %}
 <div class="card" style="border-left:4px solid var(--accent,#4a90d9);margin:10px 0">
+  {% if not has_resume %}
   <b>Add your resume</b> <span class="meta">— every match will also show
   your <b>candidate fit</b>: what you bring to the role, grounded in your
   resume. It lives on your private profile page (we emailed you the link
   when you signed up).</span>
+  {% else %}
+  <b>Resume on file ✓</b> <span class="meta">— update it, or edit your
+  matching profile (titles, skills, locations), on your private profile
+  page.</span>
+  {% endif %}
   {% if plink_sent %}
   <p class="meta" style="margin:8px 0 0"><b>✓</b> If this page has a
   confirmed email on file, your private link is on its way — check your
@@ -18,7 +23,6 @@
   </form>
   {% endif %}
 </div>
-{% endif %}
 {% if rows %}
   <form method="get" class="meta" style="margin:10px 0">
   <input name="q" value="{{ q }}" placeholder="filter title, e.g. data engineer"

@@ -198,10 +198,12 @@ def test_matches_page_banner_and_profile_link_email(conn, monkeypatch):
     # unknown user: identical response shape, nothing sent (no oracle)
     r3 = c.post("/job_matches/nobody/profile_link")
     assert "plink=sent" in r3.headers["Location"] and len(sent) == 1
-    # once a resume exists the banner disappears
+    # once a resume exists the upsell flips to a persistent profile door
     resmod.save_resume(conn, aid, "tuser", "cv.pdf", make_pdf(CV * 3))
     page = c.get("/job_matches/tuser").content
-    assert b"Email me my profile link" not in page
+    assert b"Add your resume" not in page
+    assert b"Resume on file" in page
+    assert b"Email me my profile link" in page   # the door never disappears
 
 
 def test_unconfirmed_user_gets_no_profile_link_email(conn, monkeypatch):
