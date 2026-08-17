@@ -33,14 +33,57 @@ log = logging.getLogger(__name__)
 # 06:45 match and they fight over the write lock. The lock makes late jobs
 # WAIT instead; combined with the 60s busy_timeout, 'database is locked'
 # should never page again.
-_pipeline_lock = threading.Lock()
+#
+# WHY A PRIORITY LOCK, NOT threading.Lock: a plain Lock hands off to waiting
+# threads in ARBITRARY order. On 17 Aug 2026 a 3.5h poll queued match (06:45),
+# prepare, publish AND the Monday digest (08:30) behind it — and the digest
+# won the handoff, composing "nothing new" emails from a day whose match run
+# hadn't happened yet. Users with fresh score-7+ matches got skipped for a
+# week. When several pipeline jobs are waiting, they must drain in PIPELINE
+# order, because the later stages consume what the earlier ones produce.
+_JOB_RANK = {"poll": 0, "prefilter": 1, "match": 2, "prepare": 3,
+             "publish": 4, "digest": 5, "track": 6, "indexscan": 7}
+
+
+class _PriorityLock:
+    """Mutual exclusion where, among WAITING acquirers, the lowest rank goes
+    first. Uncontended behaviour is identical to threading.Lock."""
+
+    def __init__(self):
+        self._cond = threading.Condition()
+        self._held = False
+        self._waiting: list[int] = []
+
+    def try_acquire(self, rank: int) -> bool:
+        with self._cond:
+            if self._held or self._waiting:
+                return False
+            self._held = True
+            return True
+
+    def acquire(self, rank: int) -> None:
+        with self._cond:
+            self._waiting.append(rank)
+            while self._held or min(self._waiting) < rank:
+                self._cond.wait()
+            self._waiting.remove(rank)
+            self._held = True
+
+    def release(self) -> None:
+        with self._cond:
+            self._held = False
+            self._cond.notify_all()
+
+
+_pipeline_lock = _PriorityLock()
 
 
 def _guarded(job_name: str, fn) -> None:
-    waited = not _pipeline_lock.acquire(blocking=False)
+    rank = _JOB_RANK.get(job_name, max(_JOB_RANK.values()) + 1)
+    waited = not _pipeline_lock.try_acquire(rank)
     if waited:
         log.info("job %s waiting: another pipeline job is still running", job_name)
-        _pipeline_lock.acquire()
+        _pipeline_lock.acquire(rank)
     try:
         fn()
     except Exception as e:

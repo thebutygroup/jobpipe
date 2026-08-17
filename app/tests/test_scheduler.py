@@ -2,6 +2,8 @@
 waiting on the pipeline lock) run once on boot, in pipeline order. Weekly
 jobs are reported, never auto-run."""
 import json
+import threading
+import time
 
 import pytest
 
@@ -76,3 +78,62 @@ def test_catch_up_never_runs_weekly_jobs(conn, wired, caplog):
         scheduler.catch_up_stale_jobs()
     assert wired == []
     assert "indexscan" in caplog.text and "digest" in caplog.text
+
+
+# ---- priority lock: waiting jobs drain in pipeline order --------------------
+# Regression for 17 Aug 2026: a 3.5h poll queued match/prepare/publish/digest
+# behind a plain threading.Lock, and the DIGEST won the arbitrary handoff —
+# mailing "nothing new" from a day whose match run hadn't happened yet.
+
+def test_waiting_jobs_run_in_pipeline_order(monkeypatch):
+    lock = scheduler._PriorityLock()
+    monkeypatch.setattr(scheduler, "_pipeline_lock", lock)
+    lock.acquire(scheduler._JOB_RANK["poll"])  # the long poll holds the lock
+
+    ran, threads = [], []
+    # arrival order is deliberately the WORST case: reverse pipeline order
+    for name in ("digest", "publish", "prepare", "match"):
+        t = threading.Thread(
+            target=scheduler._guarded, args=(name, lambda n=name: ran.append(n)))
+        t.start()
+        threads.append(t)
+        # ensure this thread is queued before the next arrives
+        for _ in range(200):
+            if len(lock._waiting) == len(threads):
+                break
+            time.sleep(0.01)
+
+    lock.release()  # poll finishes
+    for t in threads:
+        t.join(timeout=5)
+    assert ran == ["match", "prepare", "publish", "digest"]
+
+
+def test_priority_lock_uncontended_and_late_low_rank(monkeypatch):
+    lock = scheduler._PriorityLock()
+    monkeypatch.setattr(scheduler, "_pipeline_lock", lock)
+    # uncontended: behaves like a plain lock
+    ran = []
+    scheduler._guarded("track", lambda: ran.append("track"))
+    assert ran == ["track"]
+
+    # a low-rank job arriving LATE still goes before a queued high-rank one
+    lock.acquire(scheduler._JOB_RANK["poll"])
+    t_track = threading.Thread(
+        target=scheduler._guarded, args=("track", lambda: ran.append("track2")))
+    t_track.start()
+    for _ in range(200):
+        if lock._waiting:
+            break
+        time.sleep(0.01)
+    t_match = threading.Thread(
+        target=scheduler._guarded, args=("match", lambda: ran.append("match")))
+    t_match.start()
+    for _ in range(200):
+        if len(lock._waiting) == 2:
+            break
+        time.sleep(0.01)
+    lock.release()
+    t_track.join(timeout=5)
+    t_match.join(timeout=5)
+    assert ran == ["track", "match", "track2"]
