@@ -1,7 +1,9 @@
-"""The weekly "new since last time" digest.
+"""The weekly digest.
 
-The rule under test throughout: nothing new means no email. A weekly send that
-arrives empty is how a wanted email turns into spam.
+The rule under test throughout (changed 17 Aug 2026): EVERY eligible user
+hears from us on Monday — matches, near-misses, or an honest quiet-week note
+with the widen-the-net dial. Never-confirmed signups get a capped reminder.
+Opt-outs, shadow-bans and bounced addresses are still never mailed.
 """
 
 import yaml
@@ -71,7 +73,7 @@ def test_new_matches_are_sent_and_recorded(conn, monkeypatch):
     add_match(conn, row["id"], score=9)
     sent = _capture(monkeypatch)
     out = digest.send_one(conn, dict(row))
-    assert "sent 1 new match" in out
+    assert "sent [matches]" in out
     assert len(sent) == 1 and sent[0]["to"] == "user@example.com"
     assert "Coa" in sent[0]["html_body"] and "9/10" in sent[0]["html_body"]
     ev = conn.execute(
@@ -80,13 +82,20 @@ def test_new_matches_are_sent_and_recorded(conn, monkeypatch):
     assert ev and '"ok": 1' in ev["payload_json"].replace("true", "1")
 
 
-def test_no_new_matches_means_no_email(conn, monkeypatch):
-    """Joe's rule: let's not spam."""
+def test_no_matches_sends_the_quiet_week_note(conn, monkeypatch):
+    """Joe's rule since 17 Aug: silence reads as 'the tool died' — a quiet
+    week gets an honest note with the widen-the-net dial instead."""
     row = seed_user(conn)
     sent = _capture(monkeypatch)
     out = digest.send_one(conn, dict(row))
-    assert "nothing new" in out
-    assert sent == []
+    assert "sent [quiet_week]" in out
+    assert len(sent) == 1
+    html = sent[0]["html_body"]
+    assert "quiet" in sent[0]["subject"].lower()
+    assert "job titles" in html and "/profile/tuser/" in html
+    assert "Data Engineer" in html          # shows what we searched on
+    for banned in ("lack", "missing", "gap"):
+        assert banned not in html.lower()   # positive framing, always
 
 
 def test_cutoff_is_the_last_email_not_a_fixed_window(conn, monkeypatch):
@@ -106,13 +115,18 @@ def test_cutoff_is_the_last_email_not_a_fixed_window(conn, monkeypatch):
 
     add_match(conn, row["id"], created_at="2026-07-24T00:00:00", tag="before")
     sent = _capture(monkeypatch)
-    assert "nothing new" in digest.send_one(conn, dict(row))
-    assert sent == []
+    out = digest.send_one(conn, dict(row))
+    # pre-cutoff match is invisible: this week is a quiet one for them
+    assert "sent [quiet_week]" in out
+    assert "Cobefore" not in sent[0]["html_body"]
+    conn.execute("DELETE FROM events WHERE event_type='signup_email'"
+                 " AND json_extract(payload_json,'$.kind')='digest'")
+    conn.commit()                                # clear the resend guard
 
     add_match(conn, row["id"], created_at="2026-07-26T00:00:00", tag="after")
-    assert "sent 1 new match" in digest.send_one(conn, dict(row))
-    assert len(sent) == 1
-    assert "Coafter" in sent[0]["html_body"] and "Cobefore" not in sent[0]["html_body"]
+    assert "sent [matches]" in digest.send_one(conn, dict(row))
+    assert len(sent) == 2
+    assert "Coafter" in sent[1]["html_body"] and "Cobefore" not in sent[1]["html_body"]
 
 
 def test_opted_out_user_is_never_mailed(conn, monkeypatch):
@@ -160,9 +174,70 @@ def test_digest_carries_opt_out_line_and_profile_edit_link(conn, monkeypatch):
     assert "Cohit" in html
 
 
-def test_below_threshold_matches_never_become_a_digest(conn, monkeypatch):
+def test_below_threshold_matches_send_the_near_only_variant(conn, monkeypatch):
     row = seed_user(conn)
     add_match(conn, row["id"], score=5, tag="low")
     sent = _capture(monkeypatch)
     out = digest.send_one(conn, dict(row))
-    assert "nothing new" in out and sent == []
+    assert "sent [near_only]" in out and len(sent) == 1
+    html = sent[0]["html_body"]
+    assert "Colow" in html and "5/10" in html
+    assert "close" in sent[0]["subject"].lower()
+    assert "job titles" in html and "/profile/tuser/" in html
+    for banned in ("lack", "missing", "gap"):
+        assert banned not in html.lower()
+
+
+# ---- confirmation reminders -------------------------------------------------------
+
+def _bounce(conn, email):
+    conn.execute(
+        "INSERT INTO events (event_type, payload_json, created_at) VALUES"
+        " ('email:BOUNCED', ?, datetime('now'))",
+        ('{"to": "%s"}' % email,))
+    conn.commit()
+
+
+def test_unconfirmed_user_gets_a_confirm_reminder(conn, monkeypatch):
+    seed_user(conn, "ghost", email="ghost@x.com", email_confirmed_at=None,
+              active=0)
+    sent = _capture(monkeypatch)
+    stats = digest.run(conn)
+    assert stats["reminded"] == 1 and len(sent) == 1
+    assert sent[0]["to"] == "ghost@x.com"
+    assert "/confirm/ghost/" in sent[0]["html_body"]
+    ev = conn.execute(
+        "SELECT COUNT(*) c FROM events WHERE event_type='signup_email'"
+        " AND json_extract(payload_json,'$.kind')='confirm_reminder'"
+        " AND json_extract(payload_json,'$.ok')=1").fetchone()["c"]
+    assert ev == 1
+
+
+def test_reminders_cap_at_two_ever(conn, monkeypatch):
+    seed_user(conn, "ghost", email="ghost@x.com", email_confirmed_at=None,
+              active=0)
+    sent = _capture(monkeypatch)
+    for _ in range(4):
+        # each pass: clear the 6-day recency guard but keep the lifetime count
+        digest.run(conn)
+        conn.execute("UPDATE events SET created_at = '2020-01-01T00:00:00'"
+                     " WHERE event_type='signup_email'")
+        conn.commit()
+    assert len(sent) == digest.REMINDER_MAX
+
+
+def test_bounced_address_is_never_reminded(conn, monkeypatch):
+    seed_user(conn, "ghost", email="dead@x.com", email_confirmed_at=None,
+              active=0)
+    _bounce(conn, "dead@x.com")
+    sent = _capture(monkeypatch)
+    stats = digest.run(conn)
+    assert stats["reminded"] == 0 and sent == []
+
+
+def test_opted_out_unconfirmed_is_never_reminded(conn, monkeypatch):
+    seed_user(conn, "ghost", email="g@x.com", email_confirmed_at=None,
+              active=0, digest_opt_out=1)
+    sent = _capture(monkeypatch)
+    digest.run(conn)
+    assert sent == []
