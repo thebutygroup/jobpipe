@@ -2,7 +2,7 @@
 {% block content %}
 <div class="card">
   <div class="top"><h2><a href="https://www.google.com/search?q={{ app.company|urlencode }}" target="_blank" rel="noopener" title="Google this company">{{ app.company }}</a> — {{ app.title }}</h2>
-    <span class="score">{{ app.score }}/10</span></div>
+    <span class="score">{% if candidate %}role fit {{ app.score }}/10 · you {{ candidate.score }}/10{% else %}{{ app.score }}/10{% endif %}</span></div>
   <div class="meta">{{ app.location }} · state {{ app.state }} ·
     <a class="apply" href="{{ app.apply_url }}" target="_blank" rel="noopener">apply page ↗</a></div>
   {% if links.listing %}
@@ -45,6 +45,21 @@
   </table>
   {% endif %}
 </div>
+
+{% if candidate %}
+<div class="card">
+  <h2 style="font-size:14px;margin-bottom:8px">Your candidate fit — {{ candidate.score }}/10</h2>
+  {% if candidate.bring %}
+  <div class="meta" style="text-transform:uppercase;letter-spacing:.05em;font-size:11px;margin-top:6px">what you bring</div>
+  <ul>{% for b in candidate.bring %}<li class="good">✓ {{ b }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if candidate.unlisted %}
+  <div class="meta" style="text-transform:uppercase;letter-spacing:.05em;font-size:11px;margin-top:6px">not on your resume yet</div>
+  <ul>{% for u in candidate.unlisted %}<li>{{ u }}</li>{% endfor %}</ul>
+  <div class="meta">This experience of yours isn't on your resume — for this role, it should be. Adding it is the fastest way to raise this score.</div>
+  {% endif %}
+</div>
+{% endif %}
 
 <div class="card">
   <h2 style="font-size:14px;margin-bottom:8px">Job description (captured)</h2>

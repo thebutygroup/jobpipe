@@ -39,7 +39,7 @@
 {% for a in rows %}
   <div class="card">
     <div class="top"><h2><a href="https://www.google.com/search?q={{ a.company|urlencode }}" target="_blank" rel="noopener" title="Google this company">{{ a.company }}</a> — <a href="/job_matches/{{ user_ref }}/{{ a.posting_id }}" style="color:inherit;text-decoration:none">{{ a.title }}</a></h2>
-      <span class="score">{{ a.score }}/10</span></div>
+      <span class="score">{% if a.candidate_fit_score is not None %}role fit {{ a.score }}/10 · you {{ a.candidate_fit_score }}/10{% else %}{{ a.score }}/10{% endif %}</span></div>
     <div class="meta">{{ a.location }} · state {{ a.state }}{% if a.source_label %} · <span class="pill" style="font-size:11px">via {{ a.source_label }}</span>{% endif %}</div>
     {% if a.highlights or a.reasons %}
     <div class="meta" style="text-transform:uppercase;letter-spacing:.05em;font-size:11px;margin-top:6px">why this matched you</div>

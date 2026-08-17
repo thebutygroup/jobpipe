@@ -90,7 +90,8 @@ def _list_params(request) -> tuple[str, str, str]:
 APP_QUERY = (
     "SELECT a.*, c.name AS company, p.title, p.location, p.apply_url, p.canonical_apply_url,"
     "       p.description_text, p.raw_json, p.source, m.score, m.reasons_json, "
-    "       m.highlights_json, m.alignment_json "
+    "       m.highlights_json, m.alignment_json, "
+    "       m.candidate_fit_score, m.candidate_fit_json "
     "FROM applications a "
     "JOIN postings p ON p.id = a.posting_id "
     "JOIN companies c ON c.id = p.company_id "
@@ -191,6 +192,7 @@ def app_detail(request, app_id: int):
         "reasons": json.loads(app.get("reasons_json") or "[]"),
         "highlights": json.loads(app.get("highlights_json") or "[]"),
         "alignment": json.loads(app.get("alignment_json") or "[]"),
+        "candidate": _candidate_verdict(app),
         "links": _posting_links(app),
         "can_approve": app["state"] == PENDING_REVIEW and not gaps,
         "timeline": _timeline(app_id),
@@ -333,6 +335,21 @@ def profile_link_email(request, user_ref: str):
     return redirect(f"/job_matches/{user_ref}?plink=sent")
 
 
+def _candidate_verdict(app) -> dict | None:
+    """R4: the candidate-fit half of a bidirectional match, for display.
+    None when the user had no resume at evaluation time — pages then render
+    exactly as before (the resume-less regression the design demands)."""
+    if app.get("candidate_fit_score") is None:
+        return None
+    try:
+        payload = json.loads(app.get("candidate_fit_json") or "{}")
+    except ValueError:
+        payload = {}
+    return {"score": app["candidate_fit_score"],
+            "bring": [str(x) for x in (payload.get("bring") or [])],
+            "unlisted": [str(x) for x in (payload.get("unlisted") or [])]}
+
+
 @require_GET
 def job_match_detail(request, user_ref: str, job_id: int):
     """Detail for one (user, job) match. job_id is the posting id — the public,
@@ -351,6 +368,7 @@ def job_match_detail(request, user_ref: str, job_id: int):
         "reasons": json.loads(app.get("reasons_json") or "[]"),
         "highlights": json.loads(app.get("highlights_json") or "[]"),
         "alignment": json.loads(app.get("alignment_json") or "[]"),
+        "candidate": _candidate_verdict(app),
         "links": _posting_links(app),
         "can_approve": False,  # public page is read-only; approval happens on /app/<id>
     })

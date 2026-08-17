@@ -618,3 +618,79 @@ def test_applicants_owner_mode_is_keyed_and_off_by_default(conn, monkeypatch):
     page = c.get("/applicants", {"key": "sekrit"}).content
     assert b"/profile/tuser/" in page and b"profile page" in page
     assert b"no resume" in page and b"email unconfirmed" in page
+
+
+# ---- R4: bidirectional display ----------------------------------------------
+
+def _seed_bidir(conn, cand_score=7, cand_json=None):
+    conn.execute("INSERT INTO applicants (name, user_ref, profile_path)"
+                 " VALUES ('T','tuser','p')")
+    pid, _ = upsert_posting(conn, PostingDTO(
+        company_name="Acme", source="ats", external_id="b1",
+        title="Applied AI Engineer", location="London",
+        apply_url="https://boards.greenhouse.io/acme/b1", description_text="d"))
+    if cand_json is None:
+        cand_json = ('{"bring": ["hands-on LLM pipeline work"],'
+                     ' "unlisted": ["retail-apparel industry experience"]}')
+    conn.execute(
+        "INSERT INTO matches (posting_id, applicant_id, score, reasons_json,"
+        " model, tokens_used, created_at, candidate_fit_score,"
+        " candidate_fit_json) VALUES (?,1,8,'[\"good\"]','m',1,"
+        " datetime('now'),?,?)", (pid, cand_score, cand_json))
+    conn.execute("INSERT INTO applications (posting_id, applicant_id, state,"
+                 " created_at, updated_at) VALUES (?,1,'MATCHED',"
+                 " datetime('now'),datetime('now'))", (pid,))
+    conn.commit()
+    return pid
+
+
+def test_bidirectional_scores_on_card_and_detail(conn, monkeypatch):
+    _point_db(monkeypatch, conn)
+    pid = _seed_bidir(conn)
+    lst = Client().get("/job_matches/tuser").content.decode()
+    assert "role fit 8/10" in lst and "you 7/10" in lst
+    det = Client().get(f"/job_matches/tuser/{pid}").content.decode()
+    assert "role fit 8/10" in det and "you 7/10" in det
+    assert "What you bring".lower() in det.lower()
+    assert "hands-on LLM pipeline work" in det
+    assert "Not on your resume yet".lower() in det.lower()
+    assert "retail-apparel industry experience" in det
+    # positive framing is non-negotiable — judged on the candidate card's
+    # copy (base.html's CSS legitimately contains gap:12px)
+    card = det.split("Your candidate fit")[1].split("Job description")[0]
+    for banned in ("lack", "missing", "gap"):
+        assert banned not in card.lower()
+
+
+def test_resume_less_match_renders_exactly_one_score(conn, monkeypatch):
+    """The resume-less regression: no candidate fit -> pages look like today."""
+    _point_db(monkeypatch, conn)
+    conn.execute("INSERT INTO applicants (name, user_ref, profile_path)"
+                 " VALUES ('T','tuser','p')")
+    pid, _ = upsert_posting(conn, PostingDTO(
+        company_name="Acme", source="ats", external_id="b2",
+        title="Data Engineer", location="London",
+        apply_url="https://boards.greenhouse.io/acme/b2", description_text="d"))
+    conn.execute("INSERT INTO matches (posting_id, applicant_id, score,"
+                 " reasons_json, model, tokens_used, created_at)"
+                 " VALUES (?,1,8,'[]','m',1,datetime('now'))", (pid,))
+    conn.execute("INSERT INTO applications (posting_id, applicant_id, state,"
+                 " created_at, updated_at) VALUES (?,1,'MATCHED',"
+                 " datetime('now'),datetime('now'))", (pid,))
+    conn.commit()
+    for url in ("/job_matches/tuser", f"/job_matches/tuser/{pid}"):
+        html = Client().get(url).content.decode()
+        assert "8/10" in html
+        # single-score format: no dual span, no verdict card. (The page's
+        # add-resume pitch card may mention candidate fit — that's the
+        # discovery copy, not a verdict.)
+        assert "role fit 8/10" not in html and "you 8/10" not in html
+        assert "Your candidate fit" not in html
+
+
+def test_candidate_fit_zero_still_displays(conn, monkeypatch):
+    """Score 0 is a real verdict, not an absence — must render."""
+    _point_db(monkeypatch, conn)
+    pid = _seed_bidir(conn, cand_score=0, cand_json='{"bring": [], "unlisted": []}')
+    det = Client().get(f"/job_matches/tuser/{pid}").content.decode()
+    assert "you 0/10" in det
