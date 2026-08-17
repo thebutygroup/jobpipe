@@ -144,8 +144,27 @@ def test_will_not_digest_twice_in_one_week(conn, monkeypatch):
     sent = _capture(monkeypatch)
     digest.send_one(conn, dict(row))
     add_match(conn, row["id"], created_at="2099-01-01T00:00:00", tag="2")
-    out = digest.send_one(conn, dict(row))     # new match, but too soon
-    assert "already digested" in out and len(sent) == 1
+    out = digest.send_one(conn, dict(row))     # new match, but same week
+    assert "already digested this week" in out and len(sent) == 1
+
+
+def test_last_week_send_never_blocks_this_weeks(conn, monkeypatch):
+    """The calendar-week rule (Joe, 17 Aug): a mid-week manual send must not
+    block the following Monday. Anchor is Monday 00:00, not now-minus-6-days.
+    """
+    row = seed_user(conn)
+    add_match(conn, row["id"], tag="1")
+    sent = _capture(monkeypatch)
+    digest.send_one(conn, dict(row))
+    # shove the send event to just BEFORE this week's Monday — i.e. any day
+    # last week, even Sunday 23:59 (which a 6-day rolling guard would block)
+    ws = digest.week_start(conn)
+    conn.execute("UPDATE events SET created_at = datetime(?, '-1 minute')"
+                 " WHERE event_type='signup_email'", (ws,))
+    conn.commit()
+    assert not digest.sent_this_week(conn, "tuser")
+    out = digest.send_one(conn, dict(row))
+    assert "sent [" in out and len(sent) == 2
 
 
 def test_dry_run_composes_but_sends_nothing(conn, monkeypatch):
@@ -218,7 +237,8 @@ def test_reminders_cap_at_two_ever(conn, monkeypatch):
               active=0)
     sent = _capture(monkeypatch)
     for _ in range(4):
-        # each pass: clear the 6-day recency guard but keep the lifetime count
+        # each pass: shove events into the past so the weekly guard clears
+        # but the lifetime count survives
         digest.run(conn)
         conn.execute("UPDATE events SET created_at = '2020-01-01T00:00:00'"
                      " WHERE event_type='signup_email'")

@@ -41,9 +41,21 @@ REMINDER_MAX = 2
 # How far back a user's FIRST digest reaches when they have no prior email to
 # anchor to. Without a floor the first one would dump their entire history.
 FIRST_DIGEST_WINDOW_DAYS = 7
-# Re-send guard. The job is weekly; anything inside this window is a re-run,
-# not the next issue.
-RESEND_GUARD_DAYS = 6
+
+
+def week_start(conn) -> str:
+    """Monday 00:00 (UTC) of the CURRENT week — the resend guard's anchor.
+
+    Why calendar weeks and not a rolling 6-day window (changed 17 Aug, Joe):
+    a rolling guard means any mid-week manual send (testing, catch-up)
+    silently blocks the next scheduled Monday, and that user goes ~12 days
+    without a word. The rule people actually expect is 'one summary per
+    week' — Mon-Sun, anchored, regardless of when within a week a send
+    happened. '-6 days' then 'weekday 1' always lands on this week's Monday,
+    including on Mondays themselves."""
+    return conn.execute(
+        "SELECT date('now', '-6 days', 'weekday 1') || 'T00:00:00' AS t"
+    ).fetchone()["t"]
 
 
 def recipients(conn) -> list[dict]:
@@ -107,16 +119,16 @@ def last_email_at(conn, user_ref: str) -> str | None:
     return row["t"] if row and row["t"] else None
 
 
-def sent_recently(conn, user_ref: str, kind: str = KIND) -> bool:
-    """Idempotence: a re-run of the weekly job must not mail twice."""
+def sent_this_week(conn, user_ref: str, kind: str = KIND) -> bool:
+    """Idempotence: one email of each kind per calendar week (Mon-Sun)."""
     return conn.execute(
         "SELECT 1 FROM events"
         " WHERE event_type = 'signup_email'"
         "   AND json_extract(payload_json,'$.kind') = ?"
         "   AND json_extract(payload_json,'$.user_ref') = ?"
         "   AND json_extract(payload_json,'$.ok') = 1"
-        "   AND created_at >= datetime('now', ?) LIMIT 1",
-        (kind, user_ref, f"-{RESEND_GUARD_DAYS} days")).fetchone() is not None
+        "   AND created_at >= ? LIMIT 1",
+        (kind, user_ref, week_start(conn))).fetchone() is not None
 
 
 def cutoff_for(conn, user_ref: str) -> str:
@@ -303,8 +315,8 @@ def send_one(conn, row: dict, dry_run: bool = False) -> str:
         return f"{user_ref}: could not load profile ({e})"
     if not email:
         return f"{user_ref}: no email on their profile — nothing to send"
-    if sent_recently(conn, user_ref):
-        return f"{user_ref}: already digested in the last {RESEND_GUARD_DAYS} days"
+    if sent_this_week(conn, user_ref):
+        return f"{user_ref}: already digested this week"
 
     from .profile_edit import ensure_edit_token, titles_from_row
     base = (settings.dashboard_base_url or "").rstrip("/")
@@ -380,8 +392,8 @@ def send_confirm_reminder(conn, row: dict, dry_run: bool = False) -> str:
         return f"{user_ref}: {email} has bounced — not mailing a dead address"
     if reminders_ever_sent(conn, user_ref) >= REMINDER_MAX:
         return f"{user_ref}: already reminded {REMINDER_MAX}x — leaving them be"
-    if sent_recently(conn, user_ref, kind=REMINDER_KIND):
-        return f"{user_ref}: reminded in the last {RESEND_GUARD_DAYS} days"
+    if sent_this_week(conn, user_ref, kind=REMINDER_KIND):
+        return f"{user_ref}: already reminded this week"
 
     from .confirm import ensure_confirm_token
     base = (settings.dashboard_base_url or "").rstrip("/")
