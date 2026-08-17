@@ -15,7 +15,14 @@ _last_request_at: dict[str, float] = {}
 
 
 class FetchError(Exception):
-    pass
+    """HTTP fetch gave up. `status` carries the HTTP status when the failure
+    was a definitive non-retryable response (404, 403, ...); None when the
+    failure was network-level or retries were exhausted — callers use it to
+    tell 'this URL is gone' from 'the internet hiccuped'."""
+
+    def __init__(self, message: str, status: int | None = None):
+        super().__init__(message)
+        self.status = status
 
 
 def polite_get(url: str, *, timeout: int = 30, max_retries: int = 3,
@@ -44,7 +51,8 @@ def polite_get(url: str, *, timeout: int = 30, max_retries: int = 3,
                 time.sleep(backoff)
                 backoff *= 2
                 continue
-            raise FetchError(f"HTTP {resp.status_code} for {url}")
+            raise FetchError(f"HTTP {resp.status_code} for {url}",
+                             status=resp.status_code)
         except requests.RequestException as e:
             last_exc = e
             log.warning("request error for %s (attempt %d): %s", url, attempt, e)

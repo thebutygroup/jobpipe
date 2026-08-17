@@ -14,12 +14,42 @@ import logging
 from ..config import settings
 from ..db import connect, heartbeat, log_event, now, transition, tx
 from ..matching.matcher import profile_summary
-from ..models import PENDING_REVIEW, PREPARED
+from ..models import FAILED, PENDING_REVIEW, PREPARED
+from ..pollers.base import FetchError
 from ..profile import load_applicant_profile
 from .answers import resolve
 from .forms import extract_from_url
 
 log = logging.getLogger(__name__)
+
+
+# Statuses that mean the apply URL itself no longer exists — not a transient
+# fault. 404/410 = removed; 403 is deliberately NOT here (bot walls return it
+# for pages that work fine in a browser).
+DEAD_STATUSES = frozenset({404, 410})
+
+
+def _retire_dead(conn, app, status: int) -> None:
+    """The apply URL is gone: the posting is dead, so retire the application
+    instead of leaving it MATCHED to fail again every run (that is how one
+    stale posting became a permanent 'failure' on /health, forever).
+
+    FAILED keeps a retry path (FAILED -> MATCHED) if the closure was wrong;
+    closing the posting removes it from match pages, digests and future
+    prefilters, and the poller reopens it (closed_at = NULL) if any source
+    ever sees it live again — self-correcting in both directions."""
+    with tx(conn):
+        conn.execute("UPDATE applications SET review_notes = ?, updated_at = ?"
+                     " WHERE id = ?",
+                     (f"apply_url gone (HTTP {status})", now(), app["id"]))
+        conn.execute("UPDATE postings SET closed_at = datetime('now')"
+                     " WHERE id = ? AND closed_at IS NULL", (app["posting_id"],))
+        log_event(conn, "prepare:dead_url", application_id=app["id"],
+                  payload={"status": status, "posting_id": app["posting_id"]})
+    transition(conn, app["id"], FAILED,
+               payload={"reason": "apply_url_gone", "status": status})
+    log.info("retired application %d: apply URL gone (HTTP %d), posting %d closed",
+             app["id"], status, app["posting_id"])
 
 
 def matched_apps(conn) -> list:
@@ -86,11 +116,19 @@ def run(conn, client=None) -> dict:
         import anthropic
 
         client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-    stats = {"prepared": 0, "needs_browser": 0, "failed": 0}
+    stats = {"prepared": 0, "needs_browser": 0, "failed": 0, "dead_url": 0}
     for app in matched_apps(conn):
         try:
             outcome = prepare_one(conn, app, profile_for(app["applicant_id"]), client)
             stats[outcome if outcome in stats else "failed"] += 1
+        except FetchError as e:
+            if e.status in DEAD_STATUSES:
+                _retire_dead(conn, app, e.status)
+                stats["dead_url"] += 1
+            else:
+                stats["failed"] += 1
+                log.warning("prepare fetch failed for application %d: %s",
+                            app["id"], e)
         except Exception:
             stats["failed"] += 1
             log.exception("prepare failed for application %d", app["id"])
