@@ -52,22 +52,35 @@ def _retire_dead(conn, app, status: int) -> None:
              app["id"], status, app["posting_id"])
 
 
+# The exact string submit/runner.py selects on — do not vary it.
+NEEDS_BROWSER_NOTE = "needs_browser extraction"
+
+
+def _flag_needs_browser(conn, app_id: int, reason: str = "") -> None:
+    with tx(conn):
+        conn.execute("UPDATE applications SET review_notes = ? , updated_at = ?"
+                     " WHERE id = ?", (NEEDS_BROWSER_NOTE, now(), app_id))
+        log_event(conn, "prepare:needs_browser", application_id=app_id,
+                  payload={"reason": reason} if reason else None)
+
+
 def matched_apps(conn) -> list:
+    # Apps already flagged needs_browser belong to the submitter container's
+    # Playwright pass — re-fetching them statically every run can never
+    # succeed and was most of prepare's daily runtime.
     return conn.execute(
         "SELECT a.id, a.posting_id, a.applicant_id, p.title, p.apply_url, p.description_text,"
         "       c.name AS company "
         "FROM applications a JOIN postings p ON p.id = a.posting_id "
         "JOIN companies c ON c.id = p.company_id WHERE a.state = 'MATCHED'"
+        " AND COALESCE(a.review_notes, '') != ?", (NEEDS_BROWSER_NOTE,)
     ).fetchall()
 
 
 def prepare_one(conn, app, profile, client) -> str:
     fields = extract_from_url(app["apply_url"])
     if not fields:
-        with tx(conn):
-            conn.execute("UPDATE applications SET review_notes = ? , updated_at = ?"
-                         " WHERE id = ?", ("needs_browser extraction", now(), app["id"]))
-            log_event(conn, "prepare:needs_browser", application_id=app["id"])
+        _flag_needs_browser(conn, app["id"], reason="no static fields")
         return "needs_browser"
 
     answers, summary = {}, profile_summary(profile)
@@ -125,6 +138,14 @@ def run(conn, client=None) -> dict:
             if e.status in DEAD_STATUSES:
                 _retire_dead(conn, app, e.status)
                 stats["dead_url"] += 1
+            elif e.status == 403:
+                # A bot wall (Adzuna landing pages, mainly): static fetch can
+                # never pass it, but a real browser can — exactly what the
+                # submitter's needs_browser pass exists for. Not a failure.
+                _flag_needs_browser(conn, app["id"], reason="bot wall HTTP 403")
+                stats["needs_browser"] += 1
+                log.info("application %d flagged needs_browser: bot wall (403)",
+                         app["id"])
             else:
                 stats["failed"] += 1
                 log.warning("prepare fetch failed for application %d: %s",

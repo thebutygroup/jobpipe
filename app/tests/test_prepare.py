@@ -157,13 +157,34 @@ def test_transient_fetch_error_stays_matched(conn, monkeypatch):
                         (pid,)).fetchone()["closed_at"] is None
 
 
-def test_forbidden_is_not_dead(conn, monkeypatch):
-    # 403 bot walls must not close postings that work fine in a browser.
+def test_forbidden_routes_to_needs_browser(conn, monkeypatch):
+    # 403 bot walls (Adzuna landing pages) are a browser problem, not a
+    # failure — flag for the submitter's Playwright pass, never close.
     app_id, pid = _matched_app(conn)
     stats = _run_with_fetch(conn, monkeypatch,
                             FetchError("HTTP 403 for x", status=403))
-    assert stats["failed"] == 1 and stats["dead_url"] == 0
-    assert conn.execute("SELECT state FROM applications WHERE id=?",
-                        (app_id,)).fetchone()["state"] == "MATCHED"
+    assert stats["needs_browser"] == 1
+    assert stats["failed"] == 0 and stats["dead_url"] == 0
+    row = conn.execute("SELECT state, review_notes FROM applications WHERE id=?",
+                       (app_id,)).fetchone()
+    # the exact string submit/runner.py selects on
+    assert row["state"] == "MATCHED"
+    assert row["review_notes"] == preparer.NEEDS_BROWSER_NOTE
     assert conn.execute("SELECT closed_at FROM postings WHERE id=?",
                         (pid,)).fetchone()["closed_at"] is None
+
+
+def test_needs_browser_apps_not_refetched(conn, monkeypatch):
+    # Once flagged, the submitter owns it: prepare must stop burning a
+    # rate-limited fetch on it every single run (162/day at its worst).
+    _matched_app(conn)
+    _run_with_fetch(conn, monkeypatch, FetchError("HTTP 403 for x", status=403))
+    calls = []
+
+    def counting(url):
+        calls.append(url)
+        raise FetchError("HTTP 403 for x", status=403)
+    monkeypatch.setattr(preparer, "extract_from_url", counting)
+    monkeypatch.setattr(preparer, "load_applicant_profile", lambda row: _profile())
+    stats = preparer.run(conn, client=None)
+    assert calls == [] and stats["needs_browser"] == 0
